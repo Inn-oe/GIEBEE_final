@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Customers - Giebee Engineering{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-4 border-bottom">
+    <h1 class="h2">Customers</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('add_customer') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Add Customer
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th>ID Number</th>
+                        <th>Citizenship</th>
+                        <th>Phone</th>
+                        <th>Email</th>
+                        <th>Address</th>
+                        <th>Date Added</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for customer in customers %}
+                    <tr>
+                        <td>{{ customer.name }}</td>
+                        <td>{{ customer.identification_number or '-' }}</td>
+                        <td>{{ customer.citizenship or '-' }}</td>
+                        <td>{{ customer.phone or '-' }}</td>
+                        <td>{{ customer.email or '-' }}</td>
+                        <td>{{ customer.address or '-' }}</td>
+                        <td>{{ customer.date_created.strftime('%Y-%m-%d') if customer.date_created else 'N/A' }}</td>
+                        <td class="text-end">
+                            <form method="POST" action="{{ url_for('delete_customer', customer_id=customer.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this customer?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5">
+                            <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No customers found</h5>
+                            <a href="{{ url_for('add_customer') }}" class="btn btn-primary mt-3">Add your first customer</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

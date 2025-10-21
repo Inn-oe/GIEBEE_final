@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Activities - Giebee Engineering{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-4 border-bottom">
+    <h1 class="h2">Activities</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('activity_types') }}" class="btn btn-outline-secondary me-2">
+            <i class="fas fa-cogs me-2"></i>Manage Types
+        </a>
+        <a href="{{ url_for('add_activity') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Add Activity
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Customer</th>
+                        <th>Activity Type</th>
+                        <th>Description</th>
+                        <th class="text-center">Status</th>
+                        <th>Date</th>
+                        <th class="text-end">Total Cost</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for activity in activities %}
+                    <tr>
+                        <td>{{ activity.customer.name if activity.customer else '-' }}</td>
+                        <td>{{ activity.activity_type_ref.name if activity.activity_type_ref else '-' }}</td>
+                        <td>{{ activity.description[:50] }}{% if activity.description|length > 50 %}...{% endif %}</td>
+                        <td class="text-center">
+                            <span class="badge rounded-pill
+                                {% if activity.status.value == 'COMPLETED' %}bg-success
+                                {% elif activity.status.value == 'IN_PROGRESS' %}bg-primary
+                                {% elif activity.status.value == 'SCHEDULED' %}bg-warning text-dark
+                                {% else %}bg-danger{% endif %}">
+                                {{ activity.status.value.replace('_', ' ') }}
+                            </span>
+                        </td>
+                        <td>{{ activity.date.strftime('%Y-%m-%d') if activity.date else '-' }}</td>
+                        <td class="text-end fw-bold">${{ "%.2f"|format(activity.total_cost) if activity.total_cost else '0.00' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('edit_activity', activity_id=activity.id) }}" class="btn btn-sm btn-outline-primary me-1"><i class="fas fa-edit"></i></a>
+                            <form method="POST" action="{{ url_for('delete_activity', activity_id=activity.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this activity?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5">
+                            <i class="fas fa-tasks fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No activities found</h5>
+                            <a href="{{ url_for('add_activity') }}" class="btn btn-primary mt-3">Add your first activity</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Invoice - {{ invoice.id }}{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row align-items-center">
+        <div class="col-2">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Giebee Engineering Logo" class="img-fluid" style="max-height: 100px;">
+        </div>
+        <div class="col-6">
+            <h1 class="text-danger" style="font-size: 2.5rem; font-weight: bold;">GieBee Engineering (Pvt) Ltd</h1>
+        </div>
+        <div class="col-4 text-end">
+            <p class="mb-0"><strong>+263 774 040 059</strong></p>
+            <p class="mb-0"><strong>+263 717 039 984</strong></p>
+            <p class="mb-0"><strong>giebeengineering@gmail.com</strong></p>
+        </div>
+    </div>
+    <div class="row mt-2">
+        <div class="col-12 text-end">
+            <p class="mb-0"><strong>108 Central Avenue</strong></p>
+            <p class="mb-0"><strong>Room 8, 1st Floor</strong></p>
+            <p class="mb-0"><strong>Harare, Zimbabwe</strong></p>
+        </div>
+    </div>
+
+    <hr class="my-4" style="border-top: 2px solid red;">
+
+    <div class="row">
+        <div class="col-md-6">
+            <h3>Quotation</h3>
+            <p>SAL-QTN-2025-{{ '%05d'|format(invoice.id) }}</p>
+        </div>
+        <div class="col-md-6 text-end">
+            <p><strong>Date:</strong> <strong>{{ invoice.date_created.strftime('%d-%m-%Y') }}</strong></p>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <p><strong>Customer Name:</strong><br><strong>{{ invoice.customer.name }}</strong></p>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <table class="table table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 5%;">Sr</th>
+                        <th style="width: 15%;">Item Code</th>
+                        <th>Description</th>
+                        <th style="width: 10%;" class="text-end">Quantity</th>
+                        <th style="width: 15%;" class="text-end">Rate</th>
+                        <th style="width: 15%;" class="text-end">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in invoice_items %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ item.inventory.specifications if item.inventory else 'N/A' }}</td>
+                        <td>{{ item.inventory.name if item.inventory else 'Unknown Item' }}</td>
+                        <td class="text-end">{{ item.quantity }}</td>
+                        <td class="text-end">${{ "%.2f"|format(item.unit_price) }}</td>
+                        <td class="text-end">${{ "%.2f"|format(item.quantity * item.unit_price) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-12">
+            <h4 class="fw-bold">Total: ${{ "%.2f"|format(invoice.total_amount) }}</h4>
+        </div>
+    </div>
+
+    <div class="row mt-5">
+        <div class="col-md-12">
+            <h5 class="fw-bold">Banking Details</h5>
+            <p>
+                By Check: Giebee Engineering Pvt Ltd<br>
+                Bank Transfer: ZB Bank<br>
+                FCA: 411800483226405<br>
+                Branch: Chisipiti
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

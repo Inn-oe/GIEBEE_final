@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Activity Types - Giebee Engineering{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Activity Types</h1>
+    <a href="{{ url_for('add_activity_type') }}" class="btn btn-primary">
+        <i class="fas fa-plus me-2"></i>Add Activity Type
+    </a>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Status</th>
+                <th>Date Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for type in types %}
+            <tr>
+                <td>{{ type.name }}</td>
+                <td>{{ type.description or '-' }}</td>
+                <td>
+                    <span class="badge {% if type.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+                        {% if type.is_active %}Active{% else %}Inactive{% endif %}
+                    </span>
+                </td>
+                <td>{{ type.date_created.strftime('%Y-%m-%d') if type.date_created else 'N/A' }}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <form method="POST" action="{{ url_for('delete_activity_type', type_id=type.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this activity type?');">
+                        <button type="submit" class="btn btn-sm btn-danger">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5" class="text-center">No activity types found</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

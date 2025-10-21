@@ -1,0 +1,1410 @@
+import os
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, send_file
+from datetime import datetime
+import io
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, HRFlowable
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+import sqlalchemy as db
+
+# Import Excel storage and models
+from models import (Supplier, Customer, Inventory, Activity, ActivityType, Invoice, InvoiceItem,
+                        StockTransaction, FinancialRecord, CustomField, FinancialCategory,
+                        FuelRecord, MileageRecord, JourneyRecord, Location, Pricing,
+                        StockChangeReason, FinancialType, TransactionType, PaymentType, Currency)
+from currency_converter import get_exchange_rates
+from database import db_session, init_db
+
+from whitenoise import WhiteNoise
+
+# create the app
+app = Flask(__name__)
+app.wsgi_app = WhiteNoise(app.wsgi_app, root='static/', prefix='static/')
+
+# setup a secret key, required by sessions
+app.secret_key = os.environ.get("FLASK_SECRET_KEY") or "solar_company_secret_key"
+
+def normalize_enums():
+    """Normalize enum strings in DB to match SQLAlchemy Enum definitions"""
+    # Normalize Invoice.status to uppercase values
+    try:
+        invoices = db_session.query(Invoice).all()
+        changed = 0
+        for inv in invoices:
+            if isinstance(inv.status, str):
+                val = inv.status.strip()
+                upper = val.upper()
+                if upper in ("PENDING", "PAID", "OVERDUE", "CANCELLED") and val != upper:
+                    inv.status = upper
+                    changed += 1
+            # Normalize payment_method
+            if inv.payment_method and isinstance(inv.payment_method, str):
+                val = inv.payment_method.strip().upper()
+                if val in ("CASH", "ECOCASH", "SWIPE", "TRANSFER", "CREDIT"):
+                    inv.payment_method = val
+                    changed += 1
+        if changed:
+            db_session.commit()
+    except Exception:
+        db_session.rollback()
+
+    # Normalize Inventory.payment_type
+    try:
+        inventories = db_session.query(Inventory).all()
+        changed = 0
+        for inv in inventories:
+            if inv.payment_type and isinstance(inv.payment_type, str):
+                val = inv.payment_type.strip().upper()
+                if val in ("CASH", "ECOCASH", "SWIPE", "TRANSFER", "CREDIT"):
+                    inv.payment_type = val
+                    changed += 1
+        if changed:
+            db_session.commit()
+    except Exception:
+        db_session.rollback()
+
+    # Normalize FinancialRecord.payment_method
+    try:
+        financial_records = db_session.query(FinancialRecord).all()
+        changed = 0
+        for fr in financial_records:
+            if fr.payment_method and isinstance(fr.payment_method, str):
+                val = fr.payment_method.strip().upper()
+                if val in ("CASH", "ECOCASH", "SWIPE", "TRANSFER", "CREDIT"):
+                    fr.payment_method = val
+                    changed += 1
+        if changed:
+            db_session.commit()
+    except Exception:
+        db_session.rollback()
+
+def to_usd(value, currency, rates):
+    return value * rates.get(currency, 1.0)
+
+with app.app_context():
+    init_db()
+    normalize_enums()
+
+
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    db_session.remove()
+
+# Routes
+@app.route('/')
+def index():
+    """Dashboard showing overview of activities and key metrics"""
+    # Get counts for dashboard
+    suppliers_count = db_session.query(Supplier).count()
+    customers_count = db_session.query(Customer).count()
+    inventory_count = db_session.query(Inventory).count()
+    invoices_count = db_session.query(Invoice).count()
+    activities_count = db_session.query(Activity).count()
+
+    # Location frequency for pie chart
+    journey_records = db_session.query(JourneyRecord).all()
+    location_counts = {}
+    for jr in journey_records:
+        location = jr.end_location or jr.start_location
+        if location:
+            location_counts[location] = location_counts.get(location, 0) + 1
+    top_locations = sorted(location_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    location_labels = [loc[0] for loc in top_locations]
+    location_data = [loc[1] for loc in top_locations]
+
+    return render_template('dashboard.html',
+                         suppliers_count=suppliers_count,
+                         customers_count=customers_count,
+                         inventory_count=inventory_count,
+                         invoices_count=invoices_count,
+                         activities_count=activities_count,
+                         top_locations=location_labels,
+                         location_data=location_data)
+
+@app.route('/suppliers')
+def suppliers():
+    """List all suppliers"""
+    suppliers = db_session.query(Supplier).all()
+    return render_template('suppliers.html', suppliers=suppliers)
+
+@app.route('/customers')
+def customers():
+    """List all customers"""
+    customers = db_session.query(Customer).all()
+    return render_template('customers.html', customers=customers)
+
+@app.route('/inventory')
+def inventory():
+    """View inventory with search and filter"""
+    search = request.args.get('search', '')
+    category = request.args.get('category', '')
+
+    query = db_session.query(Inventory)
+
+    if search:
+        query = query.filter(
+            db.or_(
+                Inventory.name.contains(search),
+                Inventory.brand.contains(search),
+                Inventory.specifications.contains(search)
+            )
+        )
+
+    if category:
+        query = query.filter(Inventory.category == category)
+
+    items = query.all()
+    categories = db_session.query(Inventory.category).distinct().all()
+    categories = [cat[0] for cat in categories if cat[0]]
+
+    return render_template('inventory.html', items=items, categories=categories, search=search, selected_category=category)
+
+@app.route('/invoices')
+def invoices():
+    """List all invoices"""
+    invoices = db_session.query(Invoice).order_by(Invoice.date_created.desc()).all()
+    return render_template('invoices.html', invoices=invoices)
+
+@app.route('/activities')
+def activities():
+    """List company activities"""
+    activities = db_session.query(Activity).order_by(Activity.date.desc()).all()
+    return render_template('activities.html', activities=activities)
+
+@app.route('/financial')
+def financial():
+    """Financial dashboard"""
+    # Get month and year from query parameters
+    selected_month = int(request.args.get('month', datetime.now().month))
+    selected_year = int(request.args.get('year', datetime.now().year))
+
+    # Calculate totals for selected period
+    from models import FinancialType
+    start_date = datetime(selected_year, selected_month, 1)
+    if selected_month == 12:
+        end_date = datetime(selected_year + 1, 1, 1)
+    else:
+        end_date = datetime(selected_year, selected_month + 1, 1)
+
+    # Total sales from invoices in the period
+    total_sales = db_session.query(db.func.sum(Invoice.total_amount)).filter(
+        Invoice.date_created >= start_date,
+        Invoice.date_created < end_date
+    ).scalar() or 0
+
+    # Total expenses in the period
+    total_expenses = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
+        FinancialRecord.type == FinancialType.EXPENSE,
+        FinancialRecord.date >= start_date,
+        FinancialRecord.date < end_date
+    ).scalar() or 0
+
+    # Total other income in the period
+    total_income = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
+        FinancialRecord.type == FinancialType.INCOME,
+        FinancialRecord.date >= start_date,
+        FinancialRecord.date < end_date
+    ).scalar() or 0
+
+    profit = (total_sales + total_income) - total_expenses
+
+    # Recent transactions
+    recent_transactions = db_session.query(FinancialRecord).filter(
+        FinancialRecord.date >= start_date,
+        FinancialRecord.date < end_date
+    ).order_by(FinancialRecord.date.desc()).limit(10).all()
+
+    # Additional financial metrics
+    cogs = db_session.query(db.func.sum(StockTransaction.total_value)).filter(
+        StockTransaction.transaction_type == 'STOCK_OUT',
+        StockTransaction.date_created >= start_date,
+        StockTransaction.date_created < end_date
+    ).scalar() or 0
+
+    inventory_losses = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
+        FinancialRecord.category == 'Inventory Loss',
+        FinancialRecord.date >= start_date,
+        FinancialRecord.date < end_date
+    ).scalar() or 0
+
+    total_fuel_cost = db_session.query(db.func.sum(FuelRecord.total_cost)).filter(
+        FuelRecord.date >= start_date,
+        FuelRecord.date < end_date
+    ).scalar() or 0
+
+    # Inventory turnover (COGS / Average Inventory)
+    avg_inventory_value = db_session.query(db.func.avg(Inventory.unit_price * Inventory.quantity)).scalar() or 1
+    inventory_turnover = abs(cogs) / avg_inventory_value if avg_inventory_value > 0 else 0
+
+    # Profit/Loss breakdown
+    profit_breakdown = {
+        'Sales': total_sales,
+        'Other Income': total_income,
+        'Expenses': -total_expenses
+    }
+
+    # Monthly revenue and expenses for charts
+    months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    monthly_revenue_data = []
+    monthly_expenses_data = []
+
+    for m in range(1, 13):
+        month_start = datetime(selected_year, m, 1)
+        if m == 12:
+            month_end = datetime(selected_year + 1, 1, 1)
+        else:
+            month_end = datetime(selected_year, m + 1, 1)
+
+        rev = db_session.query(db.func.sum(Invoice.total_amount)).filter(
+            Invoice.date_created >= month_start,
+            Invoice.date_created < month_end
+        ).scalar() or 0
+        monthly_revenue_data.append(rev)
+
+        exp = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
+            FinancialRecord.type == FinancialType.EXPENSE,
+            FinancialRecord.date >= month_start,
+            FinancialRecord.date < month_end
+        ).scalar() or 0
+        monthly_expenses_data.append(exp)
+
+    # Profit by item (from invoice items)
+    invoice_items = db_session.query(InvoiceItem).join(Invoice).filter(
+        Invoice.date_created >= start_date,
+        Invoice.date_created < end_date
+    ).all()
+
+    item_profits = {}
+    for item in invoice_items:
+        if item.inventory_id:
+            inventory = db_session.query(Inventory).get(item.inventory_id)
+            item_name = inventory.name if inventory else "Unknown Item"
+        else:
+            item_name = item.description or "Custom Item"
+
+        # Calculate profit (assuming unit_price is selling price, need to get cost price)
+        # For simplicity, using a basic profit calculation - you may need to adjust based on your cost structure
+        selling_price = item.unit_price
+        # Assuming cost is 70% of selling price for demonstration - adjust as needed
+        cost_price = selling_price * 0.7
+        profit = (selling_price - cost_price) * item.quantity
+
+        item_profits[item_name] = item_profits.get(item_name, 0) + profit
+
+    # Sort by profit descending and take top items
+    sorted_items = sorted(item_profits.items(), key=lambda x: x[1], reverse=True)[:10]
+    item_labels = [item[0] for item in sorted_items]
+    item_data = [item[1] for item in sorted_items]
+
+    # Location data for chart
+    journey_records = db_session.query(JourneyRecord).filter(
+        JourneyRecord.start_time >= start_date,
+        JourneyRecord.start_time < end_date
+    ).all()
+
+    location_counts = {}
+    for jr in journey_records:
+        location = jr.end_location or jr.start_location
+        if location:
+            location_counts[location] = location_counts.get(location, 0) + 1
+
+    top_locations = sorted(location_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    location_labels = [loc[0] for loc in top_locations]
+    location_data = [loc[1] for loc in top_locations]
+
+    return render_template('financial.html',
+                         total_sales=total_sales,
+                         total_expenses=total_expenses,
+                         total_income=total_income,
+                         profit=profit,
+                         recent_transactions=recent_transactions,
+                         selected_month=selected_month,
+                         selected_year=selected_year,
+                         cogs=cogs,
+                         inventory_losses=inventory_losses,
+                         total_fuel_cost=total_fuel_cost,
+                         inventory_turnover=inventory_turnover,
+                         profit_breakdown=profit_breakdown,
+                         months=months,
+                         monthly_revenue_data=monthly_revenue_data,
+                         monthly_expenses_data=monthly_expenses_data,
+                         item_labels=item_labels,
+                         item_data=item_data,
+                         top_locations=location_labels,
+                         location_data=location_data)
+
+@app.route('/fuel_tracking')
+def fuel_tracking():
+    """Fuel tracking dashboard"""
+    fuel_records = db_session.query(FuelRecord).order_by(FuelRecord.date.desc()).all()
+
+    # Calculate totals
+    total_fuel_cost = sum(record.total_cost for record in fuel_records) if fuel_records else 0
+    total_liters = sum(record.quantity_liters for record in fuel_records) if fuel_records else 0
+
+    return render_template('fuel_tracking.html', fuel_records=fuel_records, total_fuel_cost=total_fuel_cost, total_liters=total_liters)
+
+@app.route('/mileage_tracking')
+def mileage_tracking():
+    """Mileage tracking dashboard"""
+    mileage_records = db_session.query(MileageRecord).order_by(MileageRecord.date.desc()).all()
+    total_distance = sum(record.distance_km for record in mileage_records) if mileage_records else 0
+    return render_template('mileage_tracking.html', mileage_records=mileage_records, total_distance=total_distance)
+
+@app.route('/journey_tracking')
+def journey_tracking():
+    """Journey tracking dashboard"""
+    journey_records = db_session.query(JourneyRecord).order_by(JourneyRecord.start_time.desc()).all()
+    return render_template('journey_tracking.html', journey_records=journey_records)
+
+@app.route('/locations')
+def locations():
+    """List all locations"""
+    locations = db_session.query(Location).all()
+    return render_template('locations.html', locations=locations)
+
+@app.route('/pricing')
+def pricing():
+    """Pricing dashboard"""
+    pricing_records = db_session.query(Pricing).all()
+    return render_template('pricing.html', pricing_records=pricing_records)
+
+@app.route('/suppliers/add', methods=['GET', 'POST'])
+def add_supplier():
+    """Add new supplier"""
+    if request.method == 'POST':
+        from models import Currency
+        supplier = Supplier(
+            name=request.form['name'],
+            contact_person=request.form['contact_person'],
+            phone=request.form['phone'],
+            email=request.form['email'],
+            address=request.form['address'],
+            payment_terms=request.form['payment_terms'],
+            currency=Currency(request.form['currency']) if request.form['currency'] else Currency.USD
+        )
+        db_session.add(supplier)
+        db_session.commit()
+        flash('Supplier added successfully!', 'success')
+        return redirect(url_for('suppliers'))
+    return render_template('add_supplier.html')
+
+@app.route('/customers/add', methods=['GET', 'POST'])
+def add_customer():
+    """Add new customer"""
+    if request.method == 'POST':
+        customer = Customer(
+            name=request.form['name'],
+            identification_number=request.form['identification_number'],
+            citizenship=request.form['citizenship'],
+            address=request.form['address'],
+            phone=request.form['phone'],
+            email=request.form['email']
+        )
+        db_session.add(customer)
+        db_session.commit()
+        flash('Customer added successfully!', 'success')
+        return redirect(url_for('customers'))
+    return render_template('add_customer.html')
+
+@app.route('/inventory/add', methods=['GET', 'POST'])
+def add_inventory():
+    """Add new inventory item"""
+    if request.method == 'POST':
+        item = Inventory(
+            name=request.form['name'],
+            brand=request.form['brand'],
+            category=request.form['category'],
+            specifications=request.form['specifications'],
+            quantity=int(request.form['quantity']),
+            unit_price=float(request.form['unit_price']),
+            supplier_id=int(request.form['supplier_id']) if request.form['supplier_id'] else None
+        )
+        db_session.add(item)
+        db_session.commit()
+
+        # Record stock transaction
+        from models import TransactionType
+        stock_transaction = StockTransaction(
+            inventory_id=item.id,
+            transaction_type=TransactionType.STOCK_IN,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            total_value=item.quantity * item.unit_price,
+            notes=f'Initial stock for {item.name}'
+        )
+        db_session.add(stock_transaction)
+        db_session.commit()
+
+        flash('Inventory item added successfully!', 'success')
+        return redirect(url_for('inventory'))
+    suppliers = db_session.query(Supplier).all()
+    return render_template('add_inventory.html', suppliers=suppliers)
+
+@app.route('/invoices/add', methods=['GET', 'POST'])
+def add_invoice():
+    """Create new invoice"""
+    if request.method == 'POST':
+        from models import InvoiceStatus, TransactionType, Currency, PaymentType
+
+        # Begin transaction
+        try:
+            # Process and validate invoice items first
+            item_ids = request.form.getlist('item_id[]')
+            quantities = request.form.getlist('quantity[]')
+            unit_prices = request.form.getlist('unit_price[]')
+            custom_item_names = request.form.getlist('custom_item_name[]')
+
+            calculated_total = 0
+            invoice_items_data = []
+
+            # Validate all items and calculate total
+            for i, item_id in enumerate(item_ids):
+                if item_id:
+                    if item_id == 'custom':
+                        # Handle custom item
+                        custom_name = custom_item_names[i] if i < len(custom_item_names) else ''
+                        if not custom_name:
+                            flash('Custom item name is required', 'error')
+                            return redirect(url_for('add_invoice'))
+
+                        qty = int(quantities[i])
+                        unit_price = float(unit_prices[i])
+                        item_total = qty * unit_price
+                        calculated_total += item_total
+
+                        invoice_items_data.append({
+                            'inventory_id': None,  # No inventory item for custom
+                            'custom_name': custom_name,
+                            'quantity': qty,
+                            'unit_price': unit_price,
+                            'item_total': item_total
+                        })
+                    elif item_id:
+                        # Handle regular inventory item
+                        inventory_item = db_session.query(Inventory).get(int(item_id))
+                        if not inventory_item:
+                            flash(f'Item not found', 'error')
+                            return redirect(url_for('add_invoice'))
+
+                        qty = int(quantities[i])
+                        if inventory_item.quantity < qty:
+                            flash(f'Insufficient stock for {inventory_item.name}. Available: {inventory_item.quantity}', 'error')
+                            return redirect(url_for('add_invoice'))
+
+                        unit_price = float(unit_prices[i])
+                        item_total = qty * unit_price
+                        calculated_total += item_total
+
+                        invoice_items_data.append({
+                            'inventory_id': int(item_id),
+                            'inventory_item': inventory_item,
+                            'quantity': qty,
+                            'unit_price': unit_price,
+                            'item_total': item_total
+                        })
+                    elif item_id:
+                        # Handle regular inventory item
+                        inventory_item = db_session.query(Inventory).get(int(item_id))
+                        if not inventory_item:
+                            flash(f'Item not found', 'error')
+                            return redirect(url_for('add_invoice'))
+
+                        qty = int(quantities[i])
+                        if inventory_item.quantity < qty:
+                            flash(f'Insufficient stock for {inventory_item.name}. Available: {inventory_item.quantity}', 'error')
+                            return redirect(url_for('add_invoice'))
+
+                        unit_price = float(unit_prices[i])
+                        item_total = qty * unit_price
+                        calculated_total += item_total
+
+                        invoice_items_data.append({
+                            'inventory_id': int(item_id),
+                            'inventory_item': inventory_item,
+                            'quantity': qty,
+                            'unit_price': unit_price,
+                            'item_total': item_total
+                        })
+
+            # Find customer by identification number
+            customer_identification = request.form['customer_identification']
+            customer = db_session.query(Customer).filter_by(identification_number=customer_identification).first()
+            if not customer:
+                flash(f'Customer with identification number {customer_identification} not found. Please add the customer first.', 'error')
+                return redirect(url_for('add_invoice'))
+
+            # Create invoice with calculated total
+            invoice = Invoice(
+                customer_id=customer.id,
+                total_amount=calculated_total,
+                status='PENDING'
+            )
+            db_session.add(invoice)
+            db_session.flush()  # Get invoice ID without committing
+
+            # Create invoice items and update stock
+            for item_data in invoice_items_data:
+                if item_data['inventory_id'] is None:
+                    # Custom item - no inventory update needed
+                    invoice_item = InvoiceItem(
+                        invoice_id=invoice.id,
+                        inventory_id=None,
+                        quantity=item_data['quantity'],
+                        unit_price=item_data['unit_price'],
+                        description=item_data['custom_name']
+                    )
+                    db_session.add(invoice_item)
+                else:
+                    # Regular inventory item
+                    invoice_item = InvoiceItem(
+                        invoice_id=invoice.id,
+                        inventory_id=item_data['inventory_id'],
+                        quantity=item_data['quantity'],
+                        unit_price=item_data['unit_price']
+                    )
+                    db_session.add(invoice_item)
+
+                    # Update inventory quantity
+                    item_data['inventory_item'].quantity -= item_data['quantity']
+
+                    # Record stock transaction
+                    stock_transaction = StockTransaction(
+                        inventory_id=item_data['inventory_id'],
+                        transaction_type=TransactionType.STOCK_OUT,
+                        quantity=-item_data['quantity'],
+                        unit_price=item_data['unit_price'],
+                        total_value=-item_data['item_total'],
+                        reference_id=invoice.id,
+                        reference_type='INVOICE',
+                        notes=f'Sold via invoice #{invoice.id}'
+                    )
+                    db_session.add(stock_transaction)
+
+            # Commit all changes
+            db_session.commit()
+            flash('Invoice created successfully!', 'success')
+            return redirect(url_for('invoices'))
+
+        except Exception as e:
+            db_session.rollback()
+            flash(f'Error creating invoice: {str(e)}', 'error')
+            return redirect(url_for('add_invoice'))
+
+    customers = db_session.query(Customer).all()
+    inventory_items = db_session.query(Inventory).filter(Inventory.quantity > 0).all()
+    return render_template('add_invoice.html', customers=customers, inventory_items=inventory_items)
+
+@app.route('/activities/add', methods=['GET', 'POST'])
+def add_activity():
+    """Add new activity"""
+    if request.method == 'POST':
+        from models import ActivityStatusEnum, Currency
+        activity = Activity(
+            customer_id=int(request.form['customer_id']),
+            activity_type_id=int(request.form['activity_type_id']),
+            description=request.form['description'],
+            status=ActivityStatusEnum(request.form['status']),
+            date=datetime.strptime(request.form['date'], '%Y-%m-%d').date(),
+            currency=Currency.USD
+        )
+        db_session.add(activity)
+        db_session.commit()
+        flash('Activity added successfully!', 'success')
+        return redirect(url_for('activities'))
+
+    customers = db_session.query(Customer).all()
+    activity_types = db_session.query(ActivityType).filter_by(is_active=True).all()
+    return render_template('add_activity.html', customers=customers, activity_types=activity_types)
+
+@app.route('/activity_types')
+def activity_types():
+    """List all activity types"""
+    activity_types = db_session.query(ActivityType).all()
+    return render_template('activity_types.html', activity_types=activity_types)
+
+@app.route('/activity_types/add', methods=['GET', 'POST'])
+def add_activity_type():
+    """Add new activity type"""
+    if request.method == 'POST':
+        activity_type = ActivityType(
+            name=request.form['name'],
+            description=request.form['description'],
+            is_active=True
+        )
+        db_session.add(activity_type)
+        db_session.commit()
+        flash('Activity type added successfully!', 'success')
+        return redirect(url_for('activity_types'))
+    return render_template('add_activity_type.html')
+
+@app.route('/activities/edit/<int:activity_id>', methods=['GET', 'POST'])
+def edit_activity(activity_id):
+    """Edit activity"""
+    activity = db_session.query(Activity).get(activity_id)
+    if not activity:
+        flash('Activity not found!', 'error')
+        return redirect(url_for('activities'))
+
+    if request.method == 'POST':
+        from models import ActivityStatusEnum, Currency
+        activity.customer_id = int(request.form['customer_id'])
+        activity.activity_type_id = int(request.form['activity_type_id'])
+        activity.description = request.form['description']
+        activity.status = ActivityStatusEnum(request.form['status'])
+        activity.date = datetime.strptime(request.form['date'], '%Y-%m-%d').date()
+        db_session.commit()
+        flash('Activity updated successfully!', 'success')
+        return redirect(url_for('activities'))
+
+    customers = db_session.query(Customer).all()
+    activity_types = db_session.query(ActivityType).filter_by(is_active=True).all()
+    return render_template('edit_activity.html', activity=activity, customers=customers, activity_types=activity_types)
+
+@app.route('/financial/add', methods=['GET', 'POST'])
+def add_financial_record():
+    """Add financial record"""
+    if request.method == 'POST':
+        from models import FinancialType
+        record = FinancialRecord(
+            type=FinancialType(request.form['type']),
+            category=request.form['category'],
+            description=request.form['description'],
+            amount=float(request.form['amount']),
+            date=datetime.strptime(request.form['date'], '%Y-%m-%d').date()
+        )
+        db_session.add(record)
+        db_session.commit()
+        flash('Financial record added successfully!', 'success')
+        return redirect(url_for('financial'))
+    return render_template('add_financial_record.html')
+
+@app.route('/financial/categories')
+def financial_categories():
+    """Financial categories management"""
+    categories = db_session.query(FinancialCategory).all()
+    return render_template('financial_categories.html', categories=categories)
+
+@app.route('/financial/categories/add', methods=['GET', 'POST'])
+def add_financial_category():
+    """Add financial category"""
+    if request.method == 'POST':
+        category = FinancialCategory(
+            name=request.form['name'],
+            type=request.form['type'],
+            description=request.form['description']
+        )
+        db_session.add(category)
+        db_session.commit()
+        flash('Financial category added successfully!', 'success')
+        return redirect(url_for('financial_categories'))
+    return render_template('add_financial_category.html')
+
+@app.route('/financial/generate_income_statement/<int:month>/<int:year>')
+def generate_income_statement(month, year):
+    """Generate income statement PDF"""
+    from models import FinancialType
+
+    # Calculate date range
+    start_date = datetime(year, month, 1)
+    if month == 12:
+        end_date = datetime(year + 1, 1, 1)
+    else:
+        end_date = datetime(year, month + 1, 1)
+
+    # Get financial data
+    total_sales = db_session.query(db.func.sum(Invoice.total_amount)).filter(
+        Invoice.date_created >= start_date,
+        Invoice.date_created < end_date
+    ).scalar() or 0
+
+    total_expenses = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
+        FinancialRecord.type == FinancialType.EXPENSE,
+        FinancialRecord.date >= start_date,
+        FinancialRecord.date < end_date
+    ).scalar() or 0
+
+    total_income = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
+        FinancialRecord.type == FinancialType.INCOME,
+        FinancialRecord.date >= start_date,
+        FinancialRecord.date < end_date
+    ).scalar() or 0
+
+    cogs = db_session.query(db.func.sum(StockTransaction.total_value)).filter(
+        StockTransaction.transaction_type == 'STOCK_OUT',
+        StockTransaction.created_at >= start_date,
+        StockTransaction.created_at < end_date
+    ).scalar() or 0
+
+    # Create PDF
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+
+    # Title style
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        spaceAfter=30,
+        alignment=1  # Center alignment
+    )
+
+    # Content
+    story = []
+
+    # Title
+    title = Paragraph(f"Income Statement - {start_date.strftime('%B %Y')}", title_style)
+    story.append(title)
+    story.append(Spacer(1, 12))
+
+    # Income Statement Data
+    data = [
+        ['Revenue', '', ''],
+        ['Sales', f"${total_sales:,.2f}", ''],
+        ['Other Income', f"${total_income:,.2f}", ''],
+        ['Total Revenue', f"${total_sales + total_income:,.2f}", ''],
+        ['', '', ''],
+        ['Cost of Goods Sold', f"${abs(cogs):,.2f}", ''],
+        ['Gross Profit', f"${total_sales + total_income - abs(cogs):,.2f}", ''],
+        ['', '', ''],
+        ['Operating Expenses', f"${total_expenses:,.2f}", ''],
+        ['Net Profit', f"${total_sales + total_income - abs(cogs) - total_expenses:,.2f}", '']
+    ]
+
+    table = Table(data, colWidths=[200, 100, 100])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+
+    story.append(table)
+
+    doc.build(story)
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f'income_statement_{month}_{year}.pdf',
+        mimetype='application/pdf'
+    )
+
+@app.route('/financial/generate_balance_sheet/<int:month>/<int:year>')
+def generate_balance_sheet(month, year):
+    """Generate balance sheet PDF"""
+    from models import FinancialType
+
+    # Calculate date range
+    start_date = datetime(year, month, 1)
+    if month == 12:
+        end_date = datetime(year + 1, 1, 1)
+    else:
+        end_date = datetime(year, month + 1, 1)
+
+    # Get financial data
+    total_assets = db_session.query(db.func.sum(Inventory.unit_price * Inventory.quantity)).scalar() or 0
+
+    total_liabilities = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
+        FinancialRecord.type == FinancialType.EXPENSE,
+        FinancialRecord.category.in_(['Loan', 'Credit', 'Liability']),
+        FinancialRecord.date <= end_date
+    ).scalar() or 0
+
+    total_equity = total_assets - total_liabilities
+
+    # Create PDF
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+
+    # Title style
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        spaceAfter=30,
+        alignment=1  # Center alignment
+    )
+
+    # Content
+    story = []
+
+    # Title
+    title = Paragraph(f"Balance Sheet - {start_date.strftime('%B %Y')}", title_style)
+    story.append(title)
+    story.append(Spacer(1, 12))
+
+    # Balance Sheet Data
+    data = [
+        ['Assets', '', ''],
+        ['Current Assets', '', ''],
+        ['Inventory', f"${total_assets:,.2f}", ''],
+        ['Total Assets', f"${total_assets:,.2f}", ''],
+        ['', '', ''],
+        ['Liabilities & Equity', '', ''],
+        ['Current Liabilities', f"${total_liabilities:,.2f}", ''],
+        ['Equity', f"${total_equity:,.2f}", ''],
+        ['Total Liabilities & Equity', f"${total_liabilities + total_equity:,.2f}", '']
+    ]
+
+    table = Table(data, colWidths=[200, 100, 100])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+
+    story.append(table)
+
+    doc.build(story)
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f'balance_sheet_{month}_{year}.pdf',
+        mimetype='application/pdf'
+    )
+
+@app.route('/financial/delete/<int:record_id>', methods=['POST'])
+def delete_financial_record(record_id):
+    """Delete financial record"""
+    record = db_session.query(FinancialRecord).get(record_id)
+    if record:
+        db_session.delete(record)
+        db_session.commit()
+        flash('Financial record deleted successfully!', 'success')
+    else:
+        flash('Record not found!', 'error')
+    return redirect(url_for('financial'))
+
+@app.route('/inventory/stock_in', methods=['POST'])
+def stock_in():
+    """Add stock to inventory item"""
+    item_id = int(request.form['item_id'])
+    item = db_session.query(Inventory).get(item_id)
+    if not item:
+        flash('Item not found!', 'error')
+        return redirect(url_for('inventory'))
+
+    try:
+        quantity = int(request.form['quantity'])
+        unit_price = float(request.form['unit_price'])
+        notes = request.form.get('notes', '')
+
+        # Update inventory quantity
+        item.quantity += quantity
+        item.unit_price = unit_price  # Update unit price
+
+        # Record stock transaction
+        from models import TransactionType
+        stock_transaction = StockTransaction(
+            inventory_id=item.id,
+            transaction_type=TransactionType.STOCK_IN,
+            quantity=quantity,
+            unit_price=unit_price,
+            total_value=quantity * unit_price,
+            notes=notes
+        )
+        db_session.add(stock_transaction)
+        db_session.commit()
+
+        flash(f'Stock added successfully! New quantity: {item.quantity}', 'success')
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error adding stock: {str(e)}', 'error')
+
+    return redirect(url_for('inventory'))
+
+@app.route('/inventory/stock_out', methods=['POST'])
+def stock_out():
+    """Remove stock from inventory item"""
+    item_id = int(request.form['item_id'])
+    item = db_session.query(Inventory).get(item_id)
+    if not item:
+        flash('Item not found!', 'error')
+        return redirect(url_for('inventory'))
+
+    try:
+        quantity = int(request.form['quantity'])
+        reason = request.form['reason']
+        customer_name = request.form.get('customer_name', '')
+        notes = request.form.get('notes', '')
+
+        if item.quantity < quantity:
+            flash(f'Insufficient stock! Available: {item.quantity}', 'error')
+            return redirect(url_for('inventory'))
+
+        # Update inventory quantity
+        item.quantity -= quantity
+
+        # Record stock transaction
+        from models import TransactionType, StockChangeReason
+        stock_transaction = StockTransaction(
+            inventory_id=item.id,
+            transaction_type=TransactionType.STOCK_OUT,
+            quantity=-quantity,
+            unit_price=item.unit_price,
+            total_value=-quantity * item.unit_price,
+            reason=StockChangeReason(reason),
+            customer_name=customer_name,
+            notes=notes
+        )
+        db_session.add(stock_transaction)
+        db_session.commit()
+
+        flash(f'Stock removed successfully! New quantity: {item.quantity}', 'success')
+    except Exception as e:
+        db_session.rollback()
+        flash(f'Error removing stock: {str(e)}', 'error')
+
+    return redirect(url_for('inventory'))
+
+@app.route('/fuel_tracking/add', methods=['GET', 'POST'])
+def add_fuel_record():
+    """Add new fuel record"""
+    if request.method == 'POST':
+        from models import Currency
+        fuel_record = FuelRecord(
+            date=datetime.strptime(request.form['date'], '%Y-%m-%d').date(),
+            fuel_type=request.form['fuel_type'],
+            quantity_liters=float(request.form['quantity']),
+            price_per_liter=float(request.form['cost']),
+            total_cost=float(request.form['quantity']) * float(request.form['cost']),
+            vehicle_id=request.form['vehicle'],
+            fuel_station=request.form.get('location', ''),
+            notes=request.form.get('notes', '')
+        )
+        db_session.add(fuel_record)
+        db_session.commit()
+        flash('Fuel record added successfully!', 'success')
+        return redirect(url_for('fuel_tracking'))
+    return render_template('add_fuel_record.html')
+
+@app.route('/fuel_tracking/delete/<int:fuel_record_id>', methods=['POST'])
+def delete_fuel_record(fuel_record_id):
+    """Delete fuel record"""
+    record = db_session.query(FuelRecord).get(fuel_record_id)
+    if record:
+        db_session.delete(record)
+        db_session.commit()
+        flash('Fuel record deleted successfully!', 'success')
+    else:
+        flash('Fuel record not found!', 'error')
+    return redirect(url_for('fuel_tracking'))
+
+@app.route('/mileage_tracking/add', methods=['GET', 'POST'])
+def add_mileage_record():
+    """Add new mileage record"""
+    if request.method == 'POST':
+        mileage_record = MileageRecord(
+            date=datetime.strptime(request.form['date'], '%Y-%m-%d').date(),
+            vehicle_id=request.form['vehicle'],
+            start_odometer=float(request.form['start_mileage']),
+            end_odometer=float(request.form['end_mileage']),
+            distance_km=float(request.form['distance']),
+            notes=request.form.get('notes', '')
+        )
+        db_session.add(mileage_record)
+        db_session.commit()
+        flash('Mileage record added successfully!', 'success')
+        return redirect(url_for('mileage_tracking'))
+    return render_template('add_mileage_record.html')
+
+@app.route('/mileage_tracking/delete/<int:mileage_record_id>', methods=['POST'])
+def delete_mileage_record(mileage_record_id):
+    """Delete mileage record"""
+    record = db_session.query(MileageRecord).get(mileage_record_id)
+    if record:
+        db_session.delete(record)
+        db_session.commit()
+        flash('Mileage record deleted successfully!', 'success')
+    else:
+        flash('Mileage record not found!', 'error')
+    return redirect(url_for('mileage_tracking'))
+
+@app.route('/journey_tracking/add', methods=['GET', 'POST'])
+def add_journey_record():
+    """Add new journey record"""
+    if request.method == 'POST':
+        journey_record = JourneyRecord(
+            start_time=datetime.strptime(request.form['start_time'], '%Y-%m-%dT%H:%M'),
+            end_time=datetime.strptime(request.form['end_time'], '%Y-%m-%dT%H:%M') if request.form['end_time'] else None,
+            start_location=request.form['start_location'],
+            end_location=request.form['end_location'],
+            total_distance=float(request.form['distance']),
+            vehicle_id=request.form['vehicle'],
+            driver=request.form['driver'],
+            purpose=request.form['purpose'],
+            notes=request.form.get('notes', '')
+        )
+        db_session.add(journey_record)
+        db_session.commit()
+        flash('Journey record added successfully!', 'success')
+        return redirect(url_for('journey_tracking'))
+    return render_template('add_journey_record.html')
+
+@app.route('/journey_tracking/delete/<int:journey_record_id>', methods=['POST'])
+def delete_journey_record(journey_record_id):
+    """Delete journey record"""
+    record = db_session.query(JourneyRecord).get(journey_record_id)
+    if record:
+        db_session.delete(record)
+        db_session.commit()
+        flash('Journey record deleted successfully!', 'success')
+    else:
+        flash('Journey record not found!', 'error')
+    return redirect(url_for('journey_tracking'))
+
+@app.route('/locations/add', methods=['GET', 'POST'])
+def add_location():
+    """Add new location"""
+    if request.method == 'POST':
+        location = Location(
+            name=request.form['name'],
+            address=request.form['address'],
+            latitude=float(request.form['latitude']) if request.form['latitude'] else None,
+            longitude=float(request.form['longitude']) if request.form['longitude'] else None,
+            notes=request.form.get('notes', '')
+        )
+        db_session.add(location)
+        db_session.commit()
+        flash('Location added successfully!', 'success')
+        return redirect(url_for('locations'))
+    return render_template('add_location.html')
+
+@app.route('/locations/delete/<int:location_id>', methods=['POST'])
+def delete_location(location_id):
+    """Delete location"""
+    location = db_session.query(Location).get(location_id)
+    if location:
+        db_session.delete(location)
+        db_session.commit()
+        flash('Location deleted successfully!', 'success')
+    else:
+        flash('Location not found!', 'error')
+    return redirect(url_for('locations'))
+
+@app.route('/pricing/add', methods=['GET', 'POST'])
+def add_pricing():
+    """Add new pricing record"""
+    if request.method == 'POST':
+        from models import Currency
+        pricing = Pricing(
+            service_name=request.form['service_name'],
+            description=request.form['description'],
+            price=float(request.form['price']),
+            currency=Currency(request.form['currency']) if request.form['currency'] else Currency.USD,
+            unit=request.form['unit'],
+            effective_date=datetime.strptime(request.form['effective_date'], '%Y-%m-%d').date(),
+            notes=request.form.get('notes', '')
+        )
+        db_session.add(pricing)
+        db_session.commit()
+        flash('Pricing record added successfully!', 'success')
+        return redirect(url_for('pricing'))
+    return render_template('add_pricing.html')
+
+@app.route('/pricing/delete/<int:pricing_id>', methods=['POST'])
+def delete_pricing(pricing_id):
+    """Delete pricing record"""
+    pricing = db_session.query(Pricing).get(pricing_id)
+    if pricing:
+        db_session.delete(pricing)
+        db_session.commit()
+        flash('Pricing record deleted successfully!', 'success')
+    else:
+        flash('Pricing record not found!', 'error')
+    return redirect(url_for('pricing'))
+
+@app.route('/customers/delete/<int:customer_id>', methods=['POST'])
+def delete_customer(customer_id):
+    """Delete customer"""
+    customer = db_session.query(Customer).get(customer_id)
+    if customer:
+        db_session.delete(customer)
+        db_session.commit()
+        flash('Customer deleted successfully!', 'success')
+    else:
+        flash('Customer not found!', 'error')
+    return redirect(url_for('customers'))
+
+@app.route('/suppliers/delete/<int:supplier_id>', methods=['POST'])
+def delete_supplier(supplier_id):
+    """Delete supplier"""
+    supplier = db_session.query(Supplier).get(supplier_id)
+    if supplier:
+        db_session.delete(supplier)
+        db_session.commit()
+        flash('Supplier deleted successfully!', 'success')
+    else:
+        flash('Supplier not found!', 'error')
+    return redirect(url_for('suppliers'))
+
+@app.route('/inventory/delete/<int:inventory_id>', methods=['POST'])
+def delete_inventory(inventory_id):
+    """Delete inventory item"""
+    item = db_session.query(Inventory).get(inventory_id)
+    if item:
+        db_session.delete(item)
+        db_session.commit()
+        flash('Inventory item deleted successfully!', 'success')
+    else:
+        flash('Inventory item not found!', 'error')
+    return redirect(url_for('inventory'))
+
+@app.route('/invoices/delete/<int:invoice_id>', methods=['POST'])
+def delete_invoice(invoice_id):
+    """Delete invoice"""
+    invoice = db_session.query(Invoice).get(invoice_id)
+    if invoice:
+        # Restore inventory quantities
+        for item in invoice.items:
+            item.inventory.quantity += item.quantity
+        db_session.delete(invoice)
+        db_session.commit()
+        flash('Invoice deleted successfully!', 'success')
+    else:
+        flash('Invoice not found!', 'error')
+    return redirect(url_for('invoices'))
+
+@app.route('/activities/delete/<int:activity_id>', methods=['POST'])
+def delete_activity(activity_id):
+    """Delete activity"""
+    activity = db_session.query(Activity).get(activity_id)
+    if activity:
+        db_session.delete(activity)
+        db_session.commit()
+        flash('Activity deleted successfully!', 'success')
+    else:
+        flash('Activity not found!', 'error')
+    return redirect(url_for('activities'))
+
+@app.route('/activity_types/delete/<int:type_id>', methods=['POST'])
+def delete_activity_type(type_id):
+    """Delete activity type"""
+    activity_type = db_session.query(ActivityType).get(type_id)
+    if activity_type:
+        db_session.delete(activity_type)
+        db_session.commit()
+        flash('Activity type deleted successfully!', 'success')
+    else:
+        flash('Activity type not found!', 'error')
+    return redirect(url_for('activity_types'))
+
+@app.route('/financial/categories/delete/<int:category_id>', methods=['POST'])
+def delete_financial_category(category_id):
+    """Delete financial category"""
+    category = db_session.query(FinancialCategory).get(category_id)
+    if category:
+        db_session.delete(category)
+        db_session.commit()
+        flash('Financial category deleted successfully!', 'success')
+    else:
+        flash('Financial category not found!', 'error')
+    return redirect(url_for('financial_categories'))
+
+@app.route('/invoice/<int:invoice_id>')
+def view_invoice(invoice_id):
+    """View an invoice as an HTML page"""
+    invoice = db_session.query(Invoice).get(invoice_id)
+    if not invoice:
+        from flask import abort
+        abort(404)
+    invoice_items = db_session.query(InvoiceItem).filter_by(invoice_id=invoice_id).all()
+    
+    total_quantity = 0
+    for item in invoice_items:
+        total_quantity += item.quantity
+
+    return render_template('view_invoice.html', invoice=invoice, invoice_items=invoice_items, total_quantity=total_quantity)
+
+@app.route('/invoice/<int:invoice_id>/pdf')
+def generate_invoice_pdf(invoice_id):
+    """Generate PDF invoice"""
+    invoice = db_session.query(Invoice).get(invoice_id)
+    if not invoice:
+        from flask import abort
+        abort(404)
+    invoice_items = db_session.query(InvoiceItem).filter_by(invoice_id=invoice_id).all()
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
+    styles = getSampleStyleSheet()
+    story = []
+
+    # Logo and Header
+    logo_path = os.path.join(app.root_path, 'static', 'images', 'logo.png')
+    logo = Image(logo_path, width=1.2*inch, height=1.2*inch, kind='proportional')
+
+    company_name_style = ParagraphStyle(
+        'company_name_style',
+        parent=styles['h1'],
+        fontSize=22,
+        textColor=colors.red,
+        alignment=0,
+        leading=26
+    )
+
+    contact_info_style = ParagraphStyle(
+        'contact_info_style',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11
+    )
+
+    address_style = ParagraphStyle(
+        'address_style',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        alignment=2
+    )
+
+    header_text = """
+    <b>+263 774 040 059</b><br/>
+    <b>+263 717 039 984</b><br/>
+    <b>giebeeengineering@gmail.com</b>
+    """
+    address_text = """
+    <b>108 Central Avenue</b><br/>
+    <b>Room 8, 1st Floor</b><br/>
+    <b>Harare, Zimbabwe</b>
+    """
+
+    header_table_data = [
+        [logo, Paragraph('<b>GieBee Engineering (Pvt) Ltd</b>', company_name_style), ''],
+        ['', Paragraph(header_text, contact_info_style), Paragraph(address_text, address_style)]
+    ]
+
+    header_table = Table(header_table_data, colWidths=[1.3*inch, 3.5*inch, 2.7*inch])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('SPAN', (0, 0), (0, 1)), # Span logo over two rows
+        ('SPAN', (1, 0), (2, 0)), # Span company name over two columns
+        ('ALIGN', (2, 1), (2, 1), 'RIGHT'),
+    ]))
+
+    story.append(header_table)
+    story.append(Spacer(1, 0.1*inch))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.red))
+    story.append(Spacer(1, 0.2*inch))
+
+    # Quotation Title
+    quotation_style = ParagraphStyle(
+        'quotation_style',
+        parent=styles['h2'],
+        fontSize=16,
+        alignment=0,
+        spaceAfter=8
+    )
+    story.append(Paragraph('Quotation', quotation_style))
+    story.append(Paragraph(f'SAL-QTN-2025-{invoice.id:05d}', styles['Normal']))
+    story.append(Spacer(1, 0.2*inch))
+
+    # Customer Name and Date aligned
+    customer_date_style = ParagraphStyle(
+        'customer_date_style',
+        parent=styles['Normal'],
+        fontSize=12,
+        alignment=0,  # Left alignment
+        spaceAfter=10
+    )
+    story.append(Paragraph(f"<b>Customer:</b> {invoice.customer.name}", customer_date_style))
+    story.append(Paragraph(f"<b>Date:</b> {invoice.date_created.strftime('%d-%m-%Y')}", customer_date_style))
+    story.append(Spacer(1, 0.2*inch))
+
+    # Items Table
+    items_data = [['Sr', 'Item Code', 'Description', 'Quantity', 'Price', 'Total Amount']]
+    total_quantity = 0
+    for i, item in enumerate(invoice_items):
+        if item.inventory_id:
+            inventory = db_session.query(Inventory).get(item.inventory_id)
+            item_name = inventory.name if inventory else "Unknown Item"
+            item_code = inventory.specifications if inventory else "N/A"
+        else:
+            item_name = item.description or "Custom Item"
+            item_code = "Custom"
+        quantity = item.quantity
+        total_quantity += quantity
+        price = item.unit_price
+        amount = quantity * price
+        items_data.append([
+            str(i + 1),
+            item_code,
+            item_name,
+            str(quantity),
+            f"${price:,.2f}",
+            f"${amount:,.2f}"
+        ])
+
+    items_table = Table(items_data, colWidths=[0.4*inch, 1*inch, 3.1*inch, 0.7*inch, 1*inch, 1.3*inch])
+    items_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('TOPPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(items_table)
+    story.append(Spacer(1, 0.2*inch))
+    # Total
+    total_data = [
+        ['', '', '', '', '', f"Net Price ${invoice.total_amount:,.2f}"]
+    ]
+    total_table = Table(total_data, colWidths=[0.4*inch, 1*inch, 3.1*inch, 0.7*inch, 1*inch, 1.3*inch])
+    total_table.setStyle(TableStyle([
+        ('ALIGN', (5, 0), (5, 0), 'RIGHT'),
+        ('FONTNAME', (5, 0), (5, 0), 'Helvetica-Bold'),
+    ]))
+    story.append(total_table)
+    story.append(Spacer(1, 0.4*inch))
+
+    # Banking Details
+    banking_details_style = ParagraphStyle(
+        'banking_details_style',
+        parent=styles['Normal'],
+        spaceBefore=20,
+        fontSize=10
+    )
+    story.append(Paragraph('<b>Banking Details</b>', banking_details_style))
+    banking_info = """
+    Giebee Engineering Pvt Ltd<br/>
+    Bank Transfer: ZB Bank<br/>
+    FCA: 411800483226405<br/>
+    Branch: Chisipite<br/>
+    """
+    story.append(Paragraph(banking_info, styles['Normal']))
+
+    doc.build(story)
+    buffer.seek(0)
+
+    return send_file(buffer, as_attachment=True, download_name=f'invoice_{invoice.id}.pdf', mimetype='application/pdf')
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Suppliers - Giebee Engineering{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-4 border-bottom">
+    <h1 class="h2">Suppliers</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('add_supplier') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Add Supplier
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th>Contact Person</th>
+                        <th>Phone</th>
+                        <th>Email</th>
+                        <th>Currency</th>
+                        <th>Date Added</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for supplier in suppliers %}
+                    <tr>
+                        <td>{{ supplier.name }}</td>
+                        <td>{{ supplier.contact_person or '-' }}</td>
+                        <td>{{ supplier.phone or '-' }}</td>
+                        <td>{{ supplier.email or '-' }}</td>
+                        <td><span class="badge bg-secondary">{{ supplier.currency.value if supplier.currency else 'USD' }}</span></td>
+                        <td>{{ supplier.date_created.strftime('%Y-%m-%d') if supplier.date_created else 'N/A' }}</td>
+                        <td class="text-end">
+                            <form method="POST" action="{{ url_for('delete_supplier', supplier_id=supplier.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this supplier?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5">
+                            <i class="fas fa-truck fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No suppliers found</h5>
+                            <a href="{{ url_for('add_supplier') }}" class="btn btn-primary mt-3">Add your first supplier</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

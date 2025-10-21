@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+
+{% block title %}Financial Dashboard - Giebee Engineering{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Financial Dashboard</h1>
+    <div class="d-flex align-items-center">
+        <form action="{{ url_for('financial') }}" method="get" class="d-flex me-2">
+            <select name="month" class="form-select me-2">
+                {% for i in range(1, 13) %}
+                    <option value="{{ i }}" {% if i == selected_month %}selected{% endif %}>{{ i }}</option>
+                {% endfor %}
+            </select>
+            <select name="year" class="form-select me-2">
+                {% for i in range(2023, 2031) %}
+                    <option value="{{ i }}" {% if i == selected_year %}selected{% endif %}>{{ i }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-primary">Go</button>
+        </form>
+        <a href="{{ url_for('financial', reset=True) }}" class="btn btn-secondary me-2">Reset</a>
+        <a href="{{ url_for('financial_categories') }}" class="btn btn-outline-primary me-2">
+            <i class="fas fa-tags me-2"></i>Manage Categories
+        </a>
+        <a href="{{ url_for('add_financial_record') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Add Transaction
+        </a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card text-white bg-success shadow h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="text-uppercase mb-1">Total Sales</div>
+                        <div class="h5 mb-0 fw-bold">${{ "%.2f"|format(total_sales) }}</div>
+                    </div>
+                    <i class="fas fa-dollar-sign fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card text-white bg-info shadow h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="text-uppercase mb-1">Other Income</div>
+                        <div class="h5 mb-0 fw-bold">${{ "%.2f"|format(total_income) }}</div>
+                    </div>
+                    <i class="fas fa-plus fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card text-white bg-warning shadow h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="text-uppercase mb-1">Total Expenses</div>
+                        <div class="h5 mb-0 fw-bold">${{ "%.2f"|format(total_expenses) }}</div>
+                    </div>
+                    <i class="fas fa-minus fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card text-white bg-{{ 'success' if profit >= 0 else 'danger' }} shadow h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="text-uppercase mb-1">Net Profit</div>
+                        <div class="h5 mb-0 fw-bold">${{ "%.2f"|format(profit) }}</div>
+                    </div>
+                    <i class="fas fa-chart-line fa-2x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h6 class="m-0 fw-bold">Monthly Revenue & Expenses</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="monthlyChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h6 class="m-0 fw-bold">Profit/Loss Breakdown</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="profitLossChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h6 class="m-0 fw-bold">Most Visited Locations</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="locationChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h6 class="m-0 fw-bold">Profit by Item</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="itemChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h6 class="m-0 fw-bold">Recent Transactions</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Category</th>
+                                <th class="text-end">Amount</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for transaction in recent_transactions %}
+                            <tr>
+                                <td>{{ transaction.date }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if transaction.type.name == 'INCOME' else 'danger' }}">
+                                        {{ transaction.type.name }}
+                                    </span>
+                                </td>
+                                <td>{{ transaction.category or '-' }}</td>
+                                <td class="text-end">${{ "%.2f"|format(transaction.amount) }}</td>
+                                <td class="text-center">
+                                    <form action="{{ url_for('delete_financial_record', record_id=transaction.id) }}" method="post" onsubmit="return confirm('Are you sure you want to delete this record?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center">No recent transactions</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h6 class="m-0 fw-bold">Financial Reports & Summary</h6>
+            </div>
+            <div class="card-body">
+                <div class="list-group mb-4">
+                    <a href="{{ url_for('generate_income_statement', month=selected_month, year=selected_year) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        Download Income Statement
+                        <i class="fas fa-file-alt"></i>
+                    </a>
+                    <a href="{{ url_for('generate_balance_sheet', month=selected_month, year=selected_year) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        Download Balance Sheet
+                        <i class="fas fa-balance-scale"></i>
+                    </a>
+                </div>
+                <table class="table table-sm table-bordered">
+                    <thead class="table-light">
+                        <tr><th colspan="2">Financial Summary</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>COGS:</td><td class="text-end">${{ "%.2f"|format(cogs) }}</td></tr>
+                        <tr><td>Inventory Losses:</td><td class="text-end">${{ "%.2f"|format(inventory_losses) }}</td></tr>
+                        <tr><td>Total Fuel Cost:</td><td class="text-end">${{ "%.2f"|format(total_fuel_cost) }}</td></tr>
+                        <tr><td>Inventory Turnover:</td><td class="text-end">{{ "%.2f"|format(inventory_turnover) }}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const chartColors = ['#36A2EB', '#FF6384', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF'];
+
+    // Location Chart
+    const locationCtx = document.getElementById('locationChart').getContext('2d');
+    new Chart(locationCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ top_locations|tojson }},
+            datasets: [{
+                label: 'Number of Visits',
+                data: {{ location_data|tojson }},
+                backgroundColor: chartColors
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+
+    // Profit/Loss Chart
+    const profitLossCtx = document.getElementById('profitLossChart').getContext('2d');
+    new Chart(profitLossCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ profit_breakdown.keys()|list|tojson }},
+            datasets: [{
+                label: 'Amount',
+                data: {{ profit_breakdown.values()|list|tojson }},
+                backgroundColor: chartColors
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+
+    // Monthly Chart
+    const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
+    new Chart(monthlyCtx, {
+        type: 'line',
+        data: {
+            labels: {{ months|tojson }},
+            datasets: [{
+                label: 'Revenue',
+                data: {{ monthly_revenue_data|tojson }},
+                borderColor: '#36A2EB',
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                fill: true
+            }, {
+                label: 'Expenses',
+                data: {{ monthly_expenses_data|tojson }},
+                borderColor: '#FF6384',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+
+    // Item Profit Chart
+    const itemCtx = document.getElementById('itemChart').getContext('2d');
+    new Chart(itemCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ item_labels|tojson }},
+            datasets: [{
+                label: 'Profit',
+                data: {{ item_data|tojson }},
+                backgroundColor: chartColors
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

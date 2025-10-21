@@ -1,0 +1,25 @@
+[project]
+name = "giebee-engineering-erp"
+version = "0.1.0"
+description = "A comprehensive ERP system for Giebee Engineering"
+authors = ["Giebee Engineering"]
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.dependencies]
+flask = "^3.0.0"
+flask-sqlalchemy = "^3.1.1"
+flask-wtf = "^1.2.1"
+sqlalchemy = "^2.0.29"
+pandas = "^2.2.1"
+openpyxl = "^3.1.2"
+gunicorn = "^21.2.0"
+reportlab = "^4.1.0"
+pillow = "^10.2.0"
+psycopg2-binary = "^2.9.9"
+whitenoise = "^6.6.0"

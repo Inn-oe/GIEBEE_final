@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Financial Categories - Giebee Engineering{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">Financial Categories</h1>
+    <a href="{{ url_for('add_financial_category') }}" class="btn btn-primary">
+        <i class="fas fa-plus me-2"></i>Add Category
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-plus-circle me-2"></i>Income Categories</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Description</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for category in categories %}
+                                {% if category.type.value == 'INCOME' %}
+                                <tr>
+                                    <td>{{ category.name }}</td>
+                                    <td>{{ category.description or '-' }}</td>
+                                    <td>
+                                        <span class="badge {% if category.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {% if category.is_active %}Active{% else %}Inactive{% endif %}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <form method="POST" action="{{ url_for('delete_financial_category', category_id=category.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this financial category?');">
+                                            <button type="submit" class="btn btn-sm btn-danger">
+                                                <i class="fas fa-trash"></i> Delete
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center">No income categories found</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="fas fa-minus-circle me-2"></i>Expense Categories</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Description</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for category in categories %}
+                                {% if category.type.value == 'EXPENSE' %}
+                                <tr>
+                                    <td>{{ category.name }}</td>
+                                    <td>{{ category.description or '-' }}</td>
+                                    <td>
+                                        <span class="badge {% if category.is_active %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {% if category.is_active %}Active{% else %}Inactive{% endif %}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <form method="POST" action="{{ url_for('delete_financial_category', category_id=category.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this financial category?');">
+                                            <button type="submit" class="btn btn-sm btn-danger">
+                                                <i class="fas fa-trash"></i> Delete
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center">No expense categories found</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

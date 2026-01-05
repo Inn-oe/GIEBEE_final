@@ -3,38 +3,46 @@
 {% block title %}Inventory - Giebee Engineering{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-4 border-bottom">
-    <h1 class="h2">Inventory</h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <a href="{{ url_for('add_inventory') }}" class="btn btn-primary me-2">
+<div class="page-header d-flex justify-content-between align-items-center">
+    <div>
+        <h1 class="h2 fw-bold text-dark mb-1">Inventory</h1>
+        <p class="text-muted mb-0">Track stocks, manage items, and monitor levels</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('add_inventory') }}" class="btn btn-primary d-flex align-items-center">
             <i class="fas fa-plus me-2"></i>Add Item
         </a>
-        <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#stockInModal">
+        <button class="btn btn-success d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#stockInModal">
             <i class="fas fa-arrow-up me-2"></i>Stock In
         </button>
-        <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#stockOutModal">
+        <button class="btn btn-warning text-white d-flex align-items-center" data-bs-toggle="modal"
+            data-bs-target="#stockOutModal">
             <i class="fas fa-arrow-down me-2"></i>Stock Out
         </button>
     </div>
 </div>
 
-<div class="card mb-4">
-    <div class="card-header">
-        <i class="fas fa-filter me-2"></i>Filters
-    </div>
-    <div class="card-body">
-        <form method="GET" class="row g-3 align-items-center">
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <div class="d-flex align-items-center mb-3">
+            <i class="fas fa-filter text-primary me-2"></i>
+            <h6 class="mb-0 fw-bold">Filter & Search</h6>
+        </div>
+        <form method="GET" class="row g-3">
             <div class="col-md-6">
                 <div class="input-group">
-                    <input type="text" class="form-control" name="search" placeholder="Search items..." value="{{ search }}">
-                    <button type="submit" class="btn btn-outline-primary">Search</button>
+                    <span class="input-group-text bg-light border-end-0"><i class="fas fa-search text-muted"></i></span>
+                    <input type="text" class="form-control border-start-0 ps-0" name="search"
+                        placeholder="Search items by name, brand..." value="{{ search }}">
+                    <button type="submit" class="btn btn-primary">Search</button>
                 </div>
             </div>
             <div class="col-md-6">
                 <select name="category" class="form-select" onchange="this.form.submit()">
                     <option value="">All Categories</option>
                     {% for category in categories %}
-                    <option value="{{ category }}" {% if category == selected_category %}selected{% endif %}>{{ category }}</option>
+                    <option value="{{ category }}" {% if category==selected_category %}selected{% endif %}>{{ category
+                        }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -42,58 +50,75 @@
     </div>
 </div>
 
-<div class="card">
-    <div class="card-body">
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle">
-                <thead class="table-light">
+            <table class="table table-custom table-hover align-middle mb-0">
+                <thead class="bg-light">
                     <tr>
-                        <th>Name</th>
+                        <th class="ps-4">Name</th>
                         <th>Category</th>
                         <th class="text-center">Quantity</th>
                         <th class="text-end">Unit Price</th>
                         <th class="text-end">Total Value</th>
                         <th>Supplier</th>
                         <th class="text-center">Status</th>
-                        <th class="text-end">Actions</th>
+                        <th class="text-end pe-4">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for item in items %}
-                    <tr class="{% if item.quantity <= item.minimum_stock_level %}table-warning{% endif %}">
-                        <td>
-                            <div>{{ item.name }}</div>
+                    <tr class="{% if item.quantity <= item.minimum_stock_level %}bg-warning bg-opacity-10{% endif %}">
+                        <td class="ps-4">
+                            <div class="fw-medium text-dark">{{ item.name }}</div>
                             <small class="text-muted">{{ item.brand or '' }}</small>
                         </td>
-                        <td>{{ item.category or '-' }}</td>
+                        <td><span class="badge bg-light text-dark fw-normal border">{{ item.category or '-' }}</span>
+                        </td>
                         <td class="text-center">
-                            <span class="badge fs-6 rounded-pill {% if item.quantity <= item.minimum_stock_level %}bg-warning text-dark{% else %}bg-success{% endif %}">
+                            <span
+                                class="badge fs-6 rounded-pill {% if item.quantity <= item.minimum_stock_level %}bg-warning text-dark{% else %}bg-success bg-opacity-75{% endif %} px-3">
                                 {{ item.quantity }}
                             </span>
                         </td>
-                        <td class="text-end">${{ "%.2f"|format(item.unit_price) }}</td>
-                        <td class="text-end fw-bold">${{ "%.2f"|format(item.unit_price * item.quantity) }}</td>
-                        <td>{{ item.supplier.name if item.supplier else '-' }}</td>
-                        <td class="text-center">
-                            {% if item.quantity <= item.minimum_stock_level %}
-                            <span class="badge bg-warning text-dark">Low Stock</span>
+                        <td class="text-end text-muted">${{ "%.2f"|format(item.unit_price) }}</td>
+                        <td class="text-end fw-bold text-dark">${{ "%.2f"|format(item.unit_price * item.quantity) }}
+                        </td>
+                        <td>
+                            {% if item.supplier %}
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-truck text-muted me-2 small"></i>
+                                {{ item.supplier.name }}
+                            </div>
                             {% else %}
-                            <span class="badge bg-success">In Stock</span>
+                            <span class="text-muted">-</span>
                             {% endif %}
                         </td>
-                        <td class="text-end">
-                            <a href="#" class="btn btn-sm btn-outline-primary me-1"><i class="fas fa-edit"></i></a>
-                            <form method="POST" action="{{ url_for('delete_inventory', inventory_id=item.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this inventory item?');">
-                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                        <td class="text-center">
+                            {% if item.quantity <= item.minimum_stock_level %} <span class="badge bg-warning text-dark">
+                                <i class="fas fa-exclamation-triangle me-1"></i>Low Stock</span>
+                                {% else %}
+                                <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>In Stock</span>
+                                {% endif %}
+                        </td>
+                        <td class="text-end pe-4">
+                            <a href="#" class="btn btn-sm btn-light text-primary hover-primary me-1"
+                                title="Edit Item"><i class="fas fa-edit"></i></a>
+                            <form method="POST" action="{{ url_for('delete_inventory', inventory_id=item.id) }}"
+                                style="display: inline;"
+                                onsubmit="return confirm('Are you sure you want to delete this inventory item?');">
+                                <button type="submit" class="btn btn-sm btn-light text-danger hover-danger"
+                                    title="Delete Item"><i class="fas fa-trash"></i></button>
                             </form>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
                         <td colspan="8" class="text-center py-5">
-                            <i class="fas fa-boxes fa-3x text-muted mb-3"></i>
-                            <h5 class="text-muted">No inventory items found</h5>
-                            <a href="{{ url_for('add_inventory') }}" class="btn btn-primary mt-3">Add your first item</a>
+                            <i class="fas fa-boxes fa-3x text-muted mb-3 opacity-50"></i>
+                            <h5 class="text-muted fw-normal">No inventory items found</h5>
+                            <p class="text-muted small">Start tracking your stock by adding a new item.</p>
+                            <a href="{{ url_for('add_inventory') }}" class="btn btn-primary mt-3">Add Item</a>
                         </td>
                     </tr>
                     {% endfor %}
@@ -118,7 +143,8 @@
                         <select class="form-select" name="item_id" required>
                             <option value="">Select Item</option>
                             {% for item in items %}
-                            <option value="{{ item.id }}">{{ item.name }} - {{ item.brand }} (Current: {{ item.quantity }})</option>
+                            <option value="{{ item.id }}">{{ item.name }} - {{ item.brand }} (Current: {{ item.quantity
+                                }})</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -164,7 +190,8 @@
                         <select class="form-select" name="item_id" required>
                             <option value="">Select Item</option>
                             {% for item in items %}
-                            <option value="{{ item.id }}">{{ item.name }} - {{ item.brand }} ({{ item.quantity }} available)</option>
+                            <option value="{{ item.id }}">{{ item.name }} - {{ item.brand }} ({{ item.quantity }}
+                                available)</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -212,19 +239,19 @@
 
 {% block scripts %}
 <script>
-function toggleSellingPrice(selectElement) {
-    const sellingPriceSection = document.getElementById('sellingPriceSection');
-    const sellingPriceInput = document.querySelector('input[name="selling_price"]');
+    function toggleSellingPrice(selectElement) {
+        const sellingPriceSection = document.getElementById('sellingPriceSection');
+        const sellingPriceInput = document.querySelector('input[name="selling_price"]');
 
-    if (selectElement.value === 'SOLD_TO_CUSTOMER' || selectElement.value === 'INSTALLED_TO_CLIENT') {
-        sellingPriceSection.style.display = 'block';
-        sellingPriceInput.required = true;
-    } else {
-        sellingPriceSection.style.display = 'none';
-        sellingPriceInput.required = false;
-        sellingPriceInput.value = '';
+        if (selectElement.value === 'SOLD_TO_CUSTOMER' || selectElement.value === 'INSTALLED_TO_CLIENT') {
+            sellingPriceSection.style.display = 'block';
+            sellingPriceInput.required = true;
+        } else {
+            sellingPriceSection.style.display = 'none';
+            sellingPriceInput.required = false;
+            sellingPriceInput.value = '';
+        }
     }
-}
 </script>
 {% endblock %}
 {% endblock %}

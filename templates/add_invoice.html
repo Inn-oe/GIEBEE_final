@@ -3,108 +3,134 @@
 {% block title %}Create Invoice - Giebee Engineering{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-4 border-bottom">
-    <h1 class="h2">Create Invoice</h1>
-    <a href="{{ url_for('invoices') }}" class="btn btn-outline-secondary">
-        <i class="fas fa-arrow-left me-2"></i>Back to Invoices
+<div class="page-header d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h2 fw-bold text-dark mb-1">Create Invoice</h1>
+        <p class="text-muted mb-0">Generate a new invoice for a customer</p>
+    </div>
+    <a href="{{ url_for('invoices') }}" class="btn btn-light border text-muted hover-dark">
+        <i class="fas fa-arrow-left me-2"></i>Back to List
     </a>
 </div>
 
 <form method="POST">
     <div class="row">
-        <div class="col-lg-8">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">Customer</h5>
+        <div class="col-lg-9">
+            <!-- Customer Section -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-transparent border-bottom-0 pt-4 px-4 pb-0">
+                    <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-user-circle me-2"></i>Customer Details</h5>
                 </div>
-                <div class="card-body">
-                    <div class="row">
+                <div class="card-body p-4">
+                    <div class="row g-3">
                         <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="customer_identification" class="form-label">Customer Identification Number *</label>
-                                <input type="text" class="form-control" id="customer_identification" name="customer_identification" required list="customer-list">
-                                <datalist id="customer-list">
-                                    {% for customer in customers %}
-                                    <option value="{{ customer.identification_number }}">{{ customer.name }} - {{ customer.identification_number }}</option>
-                                    {% endfor %}
-                                </datalist>
-                            </div>
+                            <label for="customer_identification" class="form-label fw-medium">Identification Number
+                                <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="customer_identification"
+                                name="customer_identification" required list="customer-list"
+                                placeholder="Start typing ID number...">
+                            <datalist id="customer-list">
+                                {% for customer in customers %}
+                                <option value="{{ customer.identification_number }}">{{ customer.name }} - {{
+                                    customer.identification_number }}</option>
+                                {% endfor %}
+                            </datalist>
                         </div>
                         <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="customer_name_display" class="form-label">Customer Name</label>
-                                <input type="text" class="form-control" id="customer_name_display" readonly>
-                            </div>
+                            <label for="customer_name_display" class="form-label fw-medium">Customer Name</label>
+                            <input type="text" class="form-control bg-light" id="customer_name_display" readonly
+                                placeholder="Name will appear here...">
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Invoice Items</h5>
+            <!-- Items Section -->
+            <div class="card border-0 shadow-sm">
+                <div
+                    class="card-header bg-transparent border-bottom-0 pt-4 px-4 pb-0 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-box-open me-2"></i>Invoice Items</h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-4">
                     <div id="invoice-items">
-                        <div class="row invoice-item align-items-end mb-3">
-                            <div class="col-md-2">
-                                <label class="form-label">Item</label>
-                                <select class="form-select item-select" name="item_id[]" required onchange="updatePrice(this)">
-                                    <option value="">Select Item</option>
+                        <div class="row invoice-item bg-light rounded-3 p-3 mb-3 border g-3 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label fw-medium small text-muted">Item Selection</label>
+                                <select class="form-select item-select" name="item_id[]" required
+                                    onchange="updatePrice(this)">
+                                    <option value="">Select Item...</option>
                                     {% for item in inventory_items %}
-                                    <option value="{{ item.id }}" data-price="{{ item.unit_price }}">{{ item.name }} ({{ item.quantity }} available)</option>
+                                    <option value="{{ item.id }}" data-price="{{ item.unit_price }}">{{ item.name }} ({{
+                                        item.quantity }} in stock)</option>
                                     {% endfor %}
-                                    <option value="custom">Custom Item (Not in Stock)</option>
+                                    <option value="custom">Create Custom Item</option>
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label">Quantity</label>
-                                <input type="number" class="form-control" name="quantity[]" min="1" required oninput="calculateItemTotal(this)">
+                                <label class="form-label fw-medium small text-muted">Quantity</label>
+                                <input type="number" class="form-control" name="quantity[]" min="1" value="1" required
+                                    oninput="calculateItemTotal(this)">
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label">Unit Price</label>
+                                <label class="form-label fw-medium small text-muted">Unit Price</label>
                                 <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <input type="number" step="0.01" class="form-control unit-price" name="unit_price[]" required oninput="calculateItemTotal(this)">
+                                    <span class="input-group-text bg-white px-2 small text-muted">$</span>
+                                    <input type="number" step="0.01" class="form-control unit-price" name="unit_price[]"
+                                        required oninput="calculateItemTotal(this)">
                                 </div>
                             </div>
-                            <div class="col-md-2">
-                                <label class="form-label">Item Total</label>
+                            <div class="col-md-3">
+                                <label class="form-label fw-medium small text-muted">Total</label>
                                 <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <input type="text" class="form-control item-total" readonly value="0.00">
+                                    <span class="input-group-text bg-white px-2 small text-muted">$</span>
+                                    <input type="text" class="form-control item-total fw-bold text-dark bg-white"
+                                        readonly value="0.00">
                                 </div>
                             </div>
-                            <div class="col-md-2 custom-item-fields" style="display: none;">
-                                <label class="form-label">Custom Item Name</label>
-                                <input type="text" class="form-control custom-item-name" name="custom_item_name[]" placeholder="Enter item name">
+                            <div class="col-12 custom-item-fields mt-3" style="display: none;">
+                                <label class="form-label fw-medium small text-muted">Item Description</label>
+                                <input type="text" class="form-control custom-item-name" name="custom_item_name[]"
+                                    placeholder="Enter custom item name or description">
                             </div>
-                            <div class="col-md-2">
-                                <button type="button" class="btn btn-danger btn-sm" onclick="removeItem(this)">
-                                    <i class="fas fa-trash me-1"></i>Remove
+                            <div class="col-md-1 text-end">
+                                <button type="button" class="btn btn-outline-danger btn-sm border-0"
+                                    onclick="removeItem(this)" title="Remove Item">
+                                    <i class="fas fa-trash-alt"></i>
                                 </button>
                             </div>
                         </div>
                     </div>
-                    <button type="button" class="btn btn-secondary" onclick="addItem()">
-                        <i class="fas fa-plus me-2"></i>Add Another Item
+                    <button type="button"
+                        class="btn btn-light text-primary border-primary border-opacity-25 w-100 py-2 mt-2 border-dashed"
+                        onclick="addItem()">
+                        <i class="fas fa-plus-circle me-2"></i>Add Another Line Item
                     </button>
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-4">
-            <div class="card position-sticky" style="top: 2rem;">
-                <div class="card-header">
-                    <h5 class="mb-0">Invoice Summary</h5>
+        <div class="col-lg-3">
+            <div class="card border-0 shadow-sm position-sticky" style="top: 2rem;">
+                <div class="card-header bg-success bg-opacity-10 py-3">
+                    <h5 class="mb-0 fw-bold text-success">Summary</h5>
                 </div>
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="mb-0">Total:</h5>
-                        <h3 id="invoice-total" class="mb-0 fw-bold">$0.00</h3>
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4 pb-4 border-bottom">
+                        <span class="text-muted">Total Amount</span>
+                        <h3 id="invoice-total" class="mb-0 fw-bold text-dark">$0.00</h3>
                     </div>
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-lg">Create Invoice</button>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-medium small text-muted">Invoice Notes</label>
+                        <textarea class="form-control" name="notes" rows="3" placeholder="Optional notes..."></textarea>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary py-2 fw-medium shadow-sm">
+                            <i class="fas fa-paper-plane me-2"></i>Create Invoice
+                        </button>
+                        <a href="{{ url_for('invoices') }}"
+                            class="btn btn-outline-secondary border-0 text-muted">Cancel</a>
                     </div>
                 </div>
             </div>
@@ -115,130 +141,133 @@
 
 {% block scripts %}
 <script>
-const inventory = {
-{% for item in inventory_items %}
+    const inventory = {
+        {% for item in inventory_items %}
     "{{ item.id }}": {
         name: "{{ item.name | e }}",
-        price: "{{ item.unit_price }}",
-        quantity: "{{ item.quantity }}"
-    }{% if not loop.last %},{% endif %}
-{% endfor %}
-};
+            price: "{{ item.unit_price }}",
+                quantity: "{{ item.quantity }}"
+    } {% if not loop.last %}, {% endif %}
+    {% endfor %}
+    };
 
-function createItemRow() {
-    const itemRow = document.createElement('div');
-    itemRow.className = 'row invoice-item align-items-end mb-3';
-    itemRow.innerHTML = `
-        <div class="col-md-2">
-            <label class="form-label">Item</label>
-            <select class="form-select item-select" name="item_id[]" required onchange="updatePrice(this)">
-                <option value="">Select Item</option>
-                ${Object.keys(inventory).map(id => `<option value="${id}" data-price="${inventory[id].price}">${inventory[id].name.replace(/"/g, '"')} (${inventory[id].quantity} available)</option>`).join('')}
-                <option value="custom">Custom Item (Not in Stock)</option>
-            </select>
-        </div>
-        <div class="col-md-2">
-            <label class="form-label">Quantity</label>
-            <input type="number" class="form-control" name="quantity[]" min="1" required oninput="calculateItemTotal(this)">
-        </div>
-        <div class="col-md-2">
-            <label class="form-label">Unit Price</label>
-            <div class="input-group">
-                <span class="input-group-text">$</span>
-                <input type="number" step="0.01" class="form-control unit-price" name="unit_price[]" required oninput="calculateItemTotal(this)">
+    function createItemRow() {
+        const itemRow = document.createElement('div');
+        itemRow.className = 'row invoice-item bg-light rounded-3 p-3 mb-3 border g-3 align-items-end';
+        itemRow.innerHTML = `
+            <div class="col-md-4">
+                <label class="form-label fw-medium small text-muted">Item Selection</label>
+                <select class="form-select item-select" name="item_id[]" required onchange="updatePrice(this)">
+                    <option value="">Select Item...</option>
+                    ${Object.keys(inventory).map(id => `<option value="${id}" data-price="${inventory[id].price}">${inventory[id].name.replace(/"/g, '&quot;')} (${inventory[id].quantity} in stock)</option>`).join('')}
+                    <option value="custom">Create Custom Item</option>
+                </select>
             </div>
-        </div>
-        <div class="col-md-2">
-            <label class="form-label">Item Total</label>
-            <div class="input-group">
-                <span class="input-group-text">$</span>
-                <input type="text" class="form-control item-total" readonly value="0.00">
+            <div class="col-md-2">
+                <label class="form-label fw-medium small text-muted">Quantity</label>
+                <input type="number" class="form-control" name="quantity[]" min="1" value="1" required oninput="calculateItemTotal(this)">
             </div>
-        </div>
-        <div class="col-md-2 custom-item-fields" style="display: none;">
-            <label class="form-label">Custom Item Name</label>
-            <input type="text" class="form-control custom-item-name" name="custom_item_name[]" placeholder="Enter item name">
-        </div>
-        <div class="col-md-2">
-            <button type="button" class="btn btn-danger btn-sm" onclick="removeItem(this)">
-                <i class="fas fa-trash me-1"></i>Remove
-            </button>
-        </div>
-    `;
-    return itemRow;
-}
+            <div class="col-md-2">
+                <label class="form-label fw-medium small text-muted">Unit Price</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white px-2 small text-muted">$</span>
+                    <input type="number" step="0.01" class="form-control unit-price" name="unit_price[]" required oninput="calculateItemTotal(this)">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-medium small text-muted">Total</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-white px-2 small text-muted">$</span>
+                    <input type="text" class="form-control item-total fw-bold text-dark bg-white" readonly value="0.00">
+                </div>
+            </div>
+            <div class="col-12 custom-item-fields mt-3" style="display: none;">
+                <label class="form-label fw-medium small text-muted">Item Description</label>
+                <input type="text" class="form-control custom-item-name" name="custom_item_name[]" placeholder="Enter custom item name or description">
+            </div>
+            <div class="col-md-1 text-end">
+                <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removeItem(this)" title="Remove Item">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
+        `;
+        return itemRow;
+    }
 
-function addItem() {
-    document.getElementById('invoice-items').appendChild(createItemRow());
-}
+    function addItem() {
+        document.getElementById('invoice-items').appendChild(createItemRow());
+    }
 
-function removeItem(button) {
-    const itemContainer = document.getElementById('invoice-items');
-    if (itemContainer.children.length > 1) {
-        button.closest('.invoice-item').remove();
+    function removeItem(button) {
+        const itemContainer = document.getElementById('invoice-items');
+        if (itemContainer.children.length > 1) {
+            button.closest('.invoice-item').remove();
+            calculateGrandTotal();
+        }
+    }
+
+    function updatePrice(select) {
+        const selectedValue = select.value;
+        const priceInput = select.closest('.invoice-item').querySelector('.unit-price');
+        const customFields = select.closest('.invoice-item').querySelector('.custom-item-fields');
+
+        if (selectedValue === 'custom') {
+            priceInput.value = '';
+            customFields.style.display = 'block';
+            priceInput.required = true;
+        } else {
+            const price = select.options[select.selectedIndex].dataset.price;
+            priceInput.value = price || '';
+            customFields.style.display = 'none';
+            priceInput.required = true;
+        }
+        calculateItemTotal(select);
+    }
+
+    document.addEventListener('change', function (e) {
+        if (e.target.classList.contains('item-select')) {
+            updatePrice(e.target);
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const customerInput = document.getElementById('customer_identification');
+        if (customerInput) {
+            customerInput.addEventListener('input', function () {
+                const inputValue = this.value;
+                const datalist = document.getElementById('customer-list');
+                const options = datalist.options;
+                let customerName = '';
+
+                for (let i = 0; i < options.length; i++) {
+                    if (options[i].value === inputValue) {
+                        customerName = options[i].textContent.split(' - ')[0];
+                        break;
+                    }
+                }
+
+                document.getElementById('customer_name_display').value = customerName;
+            });
+        }
+    });
+
+    function calculateItemTotal(element) {
+        const itemRow = element.closest('.invoice-item');
+        const quantity = parseFloat(itemRow.querySelector('input[name="quantity[]"]').value) || 0;
+        const price = parseFloat(itemRow.querySelector('.unit-price').value) || 0;
+        const itemTotal = quantity * price;
+        itemRow.querySelector('.item-total').value = itemTotal.toFixed(2);
         calculateGrandTotal();
     }
-}
 
-function updatePrice(select) {
-    const selectedValue = select.value;
-    const priceInput = select.closest('.invoice-item').querySelector('.unit-price');
-    const customFields = select.closest('.invoice-item').querySelector('.custom-item-fields');
-
-    if (selectedValue === 'custom') {
-        priceInput.value = '';
-        customFields.style.display = 'block';
-        priceInput.required = true;
-    } else {
-        const price = select.options[select.selectedIndex].dataset.price;
-        priceInput.value = price || '';
-        customFields.style.display = 'none';
-        priceInput.required = true;
+    function calculateGrandTotal() {
+        let total = 0;
+        document.querySelectorAll('.invoice-item').forEach(item => {
+            const quantity = parseFloat(item.querySelector('input[name="quantity[]"]').value) || 0;
+            const price = parseFloat(item.querySelector('.unit-price').value) || 0;
+            total += quantity * price;
+        });
+        document.getElementById('invoice-total').textContent = '$' + total.toFixed(2);
     }
-    calculateItemTotal(select);
-}
-
-document.addEventListener('change', function(e) {
-    if (e.target.classList.contains('item-select')) {
-        updatePrice(e.target);
-    }
-});
-
-document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('customer_identification').addEventListener('input', function() {
-        const inputValue = this.value;
-        const datalist = document.getElementById('customer-list');
-        const options = datalist.options;
-        let customerName = '';
-
-        for (let i = 0; i < options.length; i++) {
-            if (options[i].value === inputValue) {
-                customerName = options[i].textContent.split(' - ')[0];
-                break;
-            }
-        }
-
-        document.getElementById('customer_name_display').value = customerName;
-    });
-});
-
-function calculateItemTotal(element) {
-    const itemRow = element.closest('.invoice-item');
-    const quantity = parseFloat(itemRow.querySelector('input[name="quantity[]"]').value) || 0;
-    const price = parseFloat(itemRow.querySelector('.unit-price').value) || 0;
-    const itemTotal = quantity * price;
-    itemRow.querySelector('.item-total').value = itemTotal.toFixed(2);
-    calculateGrandTotal();
-}
-
-function calculateGrandTotal() {
-    let total = 0;
-    document.querySelectorAll('.invoice-item').forEach(item => {
-        const quantity = parseFloat(item.querySelector('input[name="quantity[]"]').value) || 0;
-        const price = parseFloat(item.querySelector('.unit-price').value) || 0;
-        total += quantity * price;
-    });
-    document.getElementById('invoice-total').textContent = '$' + total.toFixed(2);
-}
 </script>
 {% endblock %}

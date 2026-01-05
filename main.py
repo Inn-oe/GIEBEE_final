@@ -1177,7 +1177,8 @@ def delete_invoice(invoice_id):
     if invoice:
         # Restore inventory quantities
         for item in invoice.items:
-            item.inventory.quantity += item.quantity
+            if item.inventory:
+                item.inventory.quantity += item.quantity
         db_session.delete(invoice)
         db_session.commit()
         flash('Invoice deleted successfully!', 'success')
@@ -1407,4 +1408,4 @@ def generate_invoice_pdf(invoice_id):
     return send_file(buffer, as_attachment=True, download_name=f'invoice_{invoice.id}.pdf', mimetype='application/pdf')
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5002)

@@ -167,7 +167,7 @@ class InvoiceItem(Base):
     __tablename__ = 'invoice_items'
     id = Column(Integer, primary_key=True)
     invoice_id = Column(Integer, ForeignKey('invoices.id'))
-    invoice = relationship('Invoice')
+    invoice = relationship('Invoice', backref='items')
     inventory_id = Column(Integer, ForeignKey('inventory.id'))
     inventory = relationship('Inventory')
     quantity = Column(Integer, nullable=False)

@@ -111,5 +111,5 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Other
-.local/
+# uv
+uv.lock

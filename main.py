@@ -1805,9 +1805,11 @@ def add_payment(invoice_id):
         return redirect(url_for('invoices'))
 
     if request.method == 'POST':
+
         try:
             amount = float(request.form['amount'])
             payment_method = request.form['payment_method']
+            payer_name = request.form.get('payer_name', '')
             reference = request.form.get('reference', '')
             notes = request.form.get('notes', '')
 
@@ -1821,6 +1823,7 @@ def add_payment(invoice_id):
                 invoice_id=invoice.id,
                 amount=amount,
                 payment_method=PaymentType(payment_method),
+                payer_name=payer_name,
                 reference_number=reference,
                 notes=notes,
                 payment_date=datetime.now()
@@ -1843,10 +1846,9 @@ def add_payment(invoice_id):
                 category="Sales",
                 description=f"Payment for Invoice #{invoice.id}",
                 amount=amount,
-
                 date=datetime.now(),
                 reference_id=invoice.id,
-                notes=f"Method: {payment_method} | Ref: {reference}" if reference else f"Method: {payment_method}"
+                notes=f"Payer: {payer_name} | Method: {payment_method} | Ref: {reference}"
             )
             db_session.add(fin_record)
 

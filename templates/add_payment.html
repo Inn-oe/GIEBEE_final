@@ -33,6 +33,7 @@
                             max="{{ invoice.balance_due }}" value="{{ invoice.balance_due }}">
                     </div>
 
+
                     <div class="mb-3">
                         <label for="payment_method" class="form-label">Payment Method</label>
                         <select class="form-select" id="payment_method" name="payment_method" required>
@@ -41,6 +42,12 @@
                             <option value="SWIPE">SWIPE</option>
                             <option value="TRANSFER">TRANSFER</option>
                         </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="payer_name" class="form-label">Payer Name (Received From)</label>
+                        <input type="text" class="form-control" id="payer_name" name="payer_name"
+                            placeholder="e.g. John Doe" required>
                     </div>
 
                     <div class="mb-3">

@@ -342,7 +342,9 @@ class Payment(Base):
     invoice = relationship('Invoice', backref='payments')
     amount = Column(Float, nullable=False)
     payment_date = Column(DateTime, default=datetime.utcnow)
+
     payment_method = Column(Enum(PaymentType), default=PaymentType.CASH)
+    payer_name = Column(String(100), nullable=True)  # New field for person who paid
     reference_number = Column(String(100))
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)

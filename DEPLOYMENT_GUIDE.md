@@ -111,7 +111,7 @@ print(secrets.token_hex(32))
 4. Test key functionality:
    - Dashboard loads
    - Database connection works
-   - Can create/view invoices
+   - Can create/view quotations
    - Custom items work
 
 ### Step 9: Domain Setup (Optional)

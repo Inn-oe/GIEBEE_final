@@ -50,7 +50,7 @@ class ActivityStatusEnum(enum.Enum):
     COMPLETED = "Completed"
     CANCELLED = "Cancelled"
 
-class InvoiceStatus(enum.Enum):
+class quotationstatus(enum.Enum):
     PENDING = "Pending"
     PAID = "Paid"
     OVERDUE = "Overdue"
@@ -100,7 +100,7 @@ class Customer(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
-    invoices = db.relationship("Invoice", back_populates="customer")
+    quotations = db.relationship("quotation", back_populates="customer")
     activities = db.relationship("Activity", back_populates="customer")
     
     def __repr__(self):
@@ -127,7 +127,7 @@ class Inventory(db.Model):
     
     # Relationships
     supplier = db.relationship("Supplier", back_populates="inventory_items")
-    invoice_items = db.relationship("InvoiceItem", back_populates="inventory")
+    quotation_items = db.relationship("quotationItem", back_populates="inventory")
     stock_transactions = db.relationship("StockTransaction", back_populates="inventory")
     
     @property
@@ -185,9 +185,9 @@ class Activity(db.Model):
     def __repr__(self):
         return f'<Activity {self.activity_type_ref.name if self.activity_type_ref else "N/A"} for {self.customer.name if self.customer else "N/A"}>'
 
-class Invoice(db.Model):
-    """Invoices for Giebee Engineering services and sales"""
-    __tablename__ = 'invoices'
+class quotation(db.Model):
+    """quotations for Giebee Engineering services and sales"""
+    __tablename__ = 'quotations'
     
     id = db.Column(db.Integer, primary_key=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False)
@@ -195,7 +195,7 @@ class Invoice(db.Model):
     currency = db.Column(Enum(Currency), default=Currency.USD)
     tax_amount = db.Column(db.Float, default=0)
     discount_amount = db.Column(db.Float, default=0)
-    status = db.Column(Enum(InvoiceStatus), default=InvoiceStatus.PENDING)
+    status = db.Column(Enum(quotationstatus), default=quotationstatus.PENDING)
     due_date = db.Column(db.Date)
     paid_date = db.Column(db.Date)
     payment_method = db.Column(Enum(PaymentType))
@@ -203,37 +203,37 @@ class Invoice(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
-    customer = db.relationship("Customer", back_populates="invoices")
-    invoice_items = db.relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan")
+    customer = db.relationship("Customer", back_populates="quotations")
+    quotation_items = db.relationship("quotationItem", back_populates="quotation", cascade="all, delete-orphan")
     
     @property
     def final_amount(self):
         return self.total_amount + self.tax_amount - self.discount_amount
     
     def __repr__(self):
-        return f'<Invoice #{self.id} - {self.customer.name if self.customer else "N/A"}>'
+        return f'<quotation #{self.id} - {self.customer.name if self.customer else "N/A"}>'
 
-class InvoiceItem(db.Model):
-    """Items on an invoice"""
-    __tablename__ = 'invoice_items'
+class quotationItem(db.Model):
+    """Items on an quotation"""
+    __tablename__ = 'quotation_items'
     
     id = db.Column(db.Integer, primary_key=True)
-    invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=False)
+    quotation_id = db.Column(db.Integer, db.ForeignKey('quotations.id'), nullable=False)
     inventory_id = db.Column(db.Integer, db.ForeignKey('inventory.id'), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     unit_price = db.Column(db.Float, nullable=False)
     description = db.Column(db.Text)  # Additional description if needed
     
     # Relationships
-    invoice = db.relationship("Invoice", back_populates="invoice_items")
-    inventory = db.relationship("Inventory", back_populates="invoice_items")
+    quotation = db.relationship("quotation", back_populates="quotation_items")
+    inventory = db.relationship("Inventory", back_populates="quotation_items")
     
     @property
     def total_price(self):
         return self.quantity * self.unit_price
     
     def __repr__(self):
-        return f'<InvoiceItem {self.quantity}x {self.inventory.name}>'
+        return f'<quotationItem {self.quantity}x {self.inventory.name}>'
 
 class StockTransaction(db.Model):
     """Track all stock movements (in, out, adjustments) with reasons"""
@@ -247,8 +247,8 @@ class StockTransaction(db.Model):
     total_value = db.Column(db.Float)
     currency = db.Column(Enum(Currency), default=Currency.USD)
     reason = db.Column(Enum(StockChangeReason))  # Reason for stock change
-    reference_id = db.Column(db.Integer)  # Reference to invoice, purchase order, etc.
-    reference_type = db.Column(db.String(50))  # "INVOICE", "PURCHASE", "ADJUSTMENT", etc.
+    reference_id = db.Column(db.Integer)  # Reference to quotation, purchase order, etc.
+    reference_type = db.Column(db.String(50))  # "quotation", "PURCHASE", "ADJUSTMENT", etc.
     customer_name = db.Column(db.String(200))  # For tracking who items were sold/installed to
     notes = db.Column(db.Text)
     created_by = db.Column(db.String(100))
@@ -274,7 +274,7 @@ class FinancialRecord(db.Model):
     payment_method = db.Column(Enum(PaymentType))
     receipt_number = db.Column(db.String(100))
     vendor_supplier = db.Column(db.String(200))
-    reference_id = db.Column(db.Integer)  # Link to invoices, activities, etc.
+    reference_id = db.Column(db.Integer)  # Link to quotations, activities, etc.
     notes = db.Column(db.Text)
     date_created = db.Column(db.DateTime, default=datetime.utcnow)
     

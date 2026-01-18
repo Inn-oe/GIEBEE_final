@@ -76,7 +76,7 @@ CREATE TABLE activities (
     FOREIGN KEY(activity_type_id) REFERENCES activity_types (id)
 );
 
-CREATE TABLE invoices (
+CREATE TABLE quotations (
     id INT NOT NULL AUTO_INCREMENT,
     customer_id INTEGER NOT NULL,
     total_amount FLOAT NOT NULL,
@@ -93,15 +93,15 @@ CREATE TABLE invoices (
     FOREIGN KEY(customer_id) REFERENCES customers (id)
 );
 
-CREATE TABLE invoice_items (
+CREATE TABLE quotation_items (
     id INT NOT NULL AUTO_INCREMENT,
-    invoice_id INTEGER NOT NULL,
+    quotation_id INTEGER NOT NULL,
     inventory_id INTEGER NOT NULL,
     quantity INTEGER NOT NULL,
     unit_price FLOAT NOT NULL,
     description TEXT,
     PRIMARY KEY (id),
-    FOREIGN KEY(invoice_id) REFERENCES invoices (id),
+    FOREIGN KEY(quotation_id) REFERENCES quotations (id),
     FOREIGN KEY(inventory_id) REFERENCES inventory (id)
 );
 

@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}Create Invoice - Giebee Engineering{% endblock %}
+{% block title %}Create quotation - Giebee Engineering{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h1 class="h2 fw-bold text-dark mb-1">Create Invoice</h1>
-        <p class="text-muted mb-0">Generate a new invoice for a customer</p>
+        <h1 class="h2 fw-bold text-dark mb-1">Create quotation</h1>
+        <p class="text-muted mb-0">Generate a new quotation for a customer</p>
     </div>
-    <a href="{{ url_for('invoices') }}" class="btn btn-light border text-muted hover-dark">
+    <a href="{{ url_for('quotations') }}" class="btn btn-light border text-muted hover-dark">
         <i class="fas fa-arrow-left me-2"></i>Back to List
     </a>
 </div>
@@ -49,11 +49,11 @@
             <div class="card border-0 shadow-sm">
                 <div
                     class="card-header bg-transparent border-bottom-0 pt-4 px-4 pb-0 d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-box-open me-2"></i>Invoice Items</h5>
+                    <h5 class="mb-0 fw-bold text-primary"><i class="fas fa-box-open me-2"></i>quotation Items</h5>
                 </div>
                 <div class="card-body p-4">
-                    <div id="invoice-items">
-                        <div class="row invoice-item bg-light rounded-3 p-3 mb-3 border g-3 align-items-end">
+                    <div id="quotation-items">
+                        <div class="row quotation-item bg-light rounded-3 p-3 mb-3 border g-3 align-items-end">
                             <div class="col-md-4">
                                 <label class="form-label fw-medium small text-muted">Item Selection</label>
                                 <select class="form-select item-select" name="item_id[]" required
@@ -117,19 +117,19 @@
                 <div class="card-body p-4">
                     <div class="d-flex justify-content-between align-items-center mb-4 pb-4 border-bottom">
                         <span class="text-muted">Total Amount</span>
-                        <h3 id="invoice-total" class="mb-0 fw-bold text-dark">$0.00</h3>
+                        <h3 id="quotation-total" class="mb-0 fw-bold text-dark">$0.00</h3>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-medium small text-muted">Invoice Notes</label>
+                        <label class="form-label fw-medium small text-muted">quotation Notes</label>
                         <textarea class="form-control" name="notes" rows="3" placeholder="Optional notes..."></textarea>
                     </div>
 
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary py-2 fw-medium shadow-sm">
-                            <i class="fas fa-paper-plane me-2"></i>Create Invoice
+                            <i class="fas fa-paper-plane me-2"></i>Create quotation
                         </button>
-                        <a href="{{ url_for('invoices') }}"
+                        <a href="{{ url_for('quotations') }}"
                             class="btn btn-outline-secondary border-0 text-muted">Cancel</a>
                     </div>
                 </div>
@@ -153,7 +153,7 @@
 
     function createItemRow() {
         const itemRow = document.createElement('div');
-        itemRow.className = 'row invoice-item bg-light rounded-3 p-3 mb-3 border g-3 align-items-end';
+        itemRow.className = 'row quotation-item bg-light rounded-3 p-3 mb-3 border g-3 align-items-end';
         itemRow.innerHTML = `
             <div class="col-md-4">
                 <label class="form-label fw-medium small text-muted">Item Selection</label>
@@ -195,21 +195,21 @@
     }
 
     function addItem() {
-        document.getElementById('invoice-items').appendChild(createItemRow());
+        document.getElementById('quotation-items').appendChild(createItemRow());
     }
 
     function removeItem(button) {
-        const itemContainer = document.getElementById('invoice-items');
+        const itemContainer = document.getElementById('quotation-items');
         if (itemContainer.children.length > 1) {
-            button.closest('.invoice-item').remove();
+            button.closest('.quotation-item').remove();
             calculateGrandTotal();
         }
     }
 
     function updatePrice(select) {
         const selectedValue = select.value;
-        const priceInput = select.closest('.invoice-item').querySelector('.unit-price');
-        const customFields = select.closest('.invoice-item').querySelector('.custom-item-fields');
+        const priceInput = select.closest('.quotation-item').querySelector('.unit-price');
+        const customFields = select.closest('.quotation-item').querySelector('.custom-item-fields');
 
         if (selectedValue === 'custom') {
             priceInput.value = '';
@@ -252,7 +252,7 @@
     });
 
     function calculateItemTotal(element) {
-        const itemRow = element.closest('.invoice-item');
+        const itemRow = element.closest('.quotation-item');
         const quantity = parseFloat(itemRow.querySelector('input[name="quantity[]"]').value) || 0;
         const price = parseFloat(itemRow.querySelector('.unit-price').value) || 0;
         const itemTotal = quantity * price;
@@ -262,12 +262,12 @@
 
     function calculateGrandTotal() {
         let total = 0;
-        document.querySelectorAll('.invoice-item').forEach(item => {
+        document.querySelectorAll('.quotation-item').forEach(item => {
             const quantity = parseFloat(item.querySelector('input[name="quantity[]"]').value) || 0;
             const price = parseFloat(item.querySelector('.unit-price').value) || 0;
             total += quantity * price;
         });
-        document.getElementById('invoice-total').textContent = '$' + total.toFixed(2);
+        document.getElementById('quotation-total').textContent = '$' + total.toFixed(2);
     }
 </script>
 {% endblock %}

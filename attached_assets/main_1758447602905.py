@@ -6,7 +6,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
 # Import database and models
-from models import (db, Supplier, Customer, Inventory, Activity, ActivityType, Invoice, InvoiceItem, 
+from models import (db, Supplier, Customer, Inventory, Activity, ActivityType, quotation, quotationItem, 
                    StockTransaction, FinancialRecord, CustomField)
 
 # create the app
@@ -33,14 +33,14 @@ def index():
     suppliers_count = Supplier.query.count()
     customers_count = Customer.query.count()
     inventory_count = Inventory.query.count()
-    invoices_count = Invoice.query.count()
+    quotations_count = quotation.query.count()
     activities_count = Activity.query.count()
     
     return render_template('dashboard.html',
                          suppliers_count=suppliers_count,
                          customers_count=customers_count,
                          inventory_count=inventory_count,
-                         invoices_count=invoices_count,
+                         quotations_count=quotations_count,
                          activities_count=activities_count)
 
 @app.route('/suppliers')
@@ -156,27 +156,27 @@ def add_inventory():
     suppliers = Supplier.query.all()
     return render_template('add_inventory.html', suppliers=suppliers)
 
-@app.route('/invoices')
-def invoices():
-    """List all invoices"""
-    invoices = Invoice.query.order_by(Invoice.date_created.desc()).all()
-    return render_template('invoices.html', invoices=invoices)
+@app.route('/quotations')
+def quotations():
+    """List all quotations"""
+    quotations = quotation.query.order_by(quotation.date_created.desc()).all()
+    return render_template('quotations.html', quotations=quotations)
 
-@app.route('/invoices/add', methods=['GET', 'POST'])
-def add_invoice():
-    """Create new invoice"""
+@app.route('/quotations/add', methods=['GET', 'POST'])
+def add_quotation():
+    """Create new quotation"""
     if request.method == 'POST':
-        from models import InvoiceStatus, TransactionType
+        from models import quotationstatus, TransactionType
         
         # Begin transaction
         try:
-            # Process and validate invoice items first
+            # Process and validate quotation items first
             item_ids = request.form.getlist('item_id[]')
             quantities = request.form.getlist('quantity[]')
             unit_prices = request.form.getlist('unit_price[]')
             
             calculated_total = 0
-            invoice_items_data = []
+            quotation_items_data = []
             
             # Validate all items and calculate total
             for i, item_id in enumerate(item_ids):
@@ -184,18 +184,18 @@ def add_invoice():
                     inventory_item = Inventory.query.get(int(item_id))
                     if not inventory_item:
                         flash(f'Item not found', 'error')
-                        return redirect(url_for('add_invoice'))
+                        return redirect(url_for('add_quotation'))
                     
                     qty = int(quantities[i])
                     if inventory_item.quantity < qty:
                         flash(f'Insufficient stock for {inventory_item.name}. Available: {inventory_item.quantity}', 'error')
-                        return redirect(url_for('add_invoice'))
+                        return redirect(url_for('add_quotation'))
                     
                     unit_price = float(unit_prices[i])
                     item_total = qty * unit_price
                     calculated_total += item_total
                     
-                    invoice_items_data.append({
+                    quotation_items_data.append({
                         'inventory_id': int(item_id),
                         'inventory_item': inventory_item,
                         'quantity': qty,
@@ -203,26 +203,26 @@ def add_invoice():
                         'item_total': item_total
                     })
             
-            # Create invoice with calculated total
-            from models import InvoiceStatus, Currency, PaymentType
-            invoice = Invoice(
+            # Create quotation with calculated total
+            from models import quotationstatus, Currency, PaymentType
+            quotation = quotation(
                 customer_id=int(request.form['customer_id']),
                 total_amount=calculated_total,
                 currency=Currency(request.form['currency']) if request.form['currency'] else Currency.USD,
-                status=InvoiceStatus.PENDING
+                status=quotationstatus.PENDING
             )
-            db.session.add(invoice)
-            db.session.flush()  # Get invoice ID without committing
+            db.session.add(quotation)
+            db.session.flush()  # Get quotation ID without committing
             
-            # Create invoice items and update stock
-            for item_data in invoice_items_data:
-                invoice_item = InvoiceItem(
-                    invoice_id=invoice.id,
+            # Create quotation items and update stock
+            for item_data in quotation_items_data:
+                quotation_item = quotationItem(
+                    quotation_id=quotation.id,
                     inventory_id=item_data['inventory_id'],
                     quantity=item_data['quantity'],
                     unit_price=item_data['unit_price']
                 )
-                db.session.add(invoice_item)
+                db.session.add(quotation_item)
                 
                 # Update inventory quantity
                 item_data['inventory_item'].quantity -= item_data['quantity']
@@ -234,32 +234,32 @@ def add_invoice():
                     quantity=-item_data['quantity'],
                     unit_price=item_data['unit_price'],
                     total_value=-item_data['item_total'],
-                    reference_id=invoice.id,
-                    reference_type='INVOICE',
-                    notes=f'Sold via invoice #{invoice.id}'
+                    reference_id=quotation.id,
+                    reference_type='quotation',
+                    notes=f'Sold via quotation #{quotation.id}'
                 )
                 db.session.add(stock_transaction)
             
             # Commit all changes
             db.session.commit()
-            flash('Invoice created successfully!', 'success')
-            return redirect(url_for('invoices'))
+            flash('quotation created successfully!', 'success')
+            return redirect(url_for('quotations'))
             
         except Exception as e:
             db.session.rollback()
-            flash(f'Error creating invoice: {str(e)}', 'error')
-            return redirect(url_for('add_invoice'))
+            flash(f'Error creating quotation: {str(e)}', 'error')
+            return redirect(url_for('add_quotation'))
     
     customers = Customer.query.all()
     inventory_items = Inventory.query.filter(Inventory.quantity > 0).all()
-    return render_template('add_invoice.html', customers=customers, inventory_items=inventory_items)
+    return render_template('add_quotation.html', customers=customers, inventory_items=inventory_items)
 
 @app.route('/financial')
 def financial():
     """Financial dashboard"""
     # Calculate totals
     from models import FinancialType
-    total_sales = db.session.query(db.func.sum(Invoice.total_amount)).scalar() or 0
+    total_sales = db.session.query(db.func.sum(quotation.total_amount)).scalar() or 0
     total_expenses = db.session.query(db.func.sum(FinancialRecord.amount)).filter(
         FinancialRecord.type == FinancialType.EXPENSE
     ).scalar() or 0
@@ -326,25 +326,25 @@ def add_activity():
     activity_types = ActivityType.query.filter_by(is_active=True).all()
     return render_template('add_activity.html', customers=customers, activity_types=activity_types)
 
-@app.route('/invoice/<int:invoice_id>/pdf')
-def generate_invoice_pdf(invoice_id):
-    """Generate PDF invoice"""
-    invoice = Invoice.query.get_or_404(invoice_id)
-    invoice_items = InvoiceItem.query.filter_by(invoice_id=invoice_id).all()
+@app.route('/quotation/<int:quotation_id>/pdf')
+def generate_quotation_pdf(quotation_id):
+    """Generate PDF quotation"""
+    quotation = quotation.query.get_or_404(quotation_id)
+    quotation_items = quotationItem.query.filter_by(quotation_id=quotation_id).all()
     
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     
-    # Invoice header
+    # quotation header
     p.setFont("Helvetica-Bold", 16)
-    p.drawString(50, 750, f"INVOICE #{invoice.id}")
+    p.drawString(50, 750, f"quotation #{quotation.id}")
     
     p.setFont("Helvetica", 12)
-    p.drawString(50, 720, f"Date: {invoice.date_created.strftime('%Y-%m-%d')}")
-    p.drawString(50, 700, f"Customer: {invoice.customer_name}")
-    p.drawString(50, 680, f"Address: {invoice.customer_address}")
+    p.drawString(50, 720, f"Date: {quotation.date_created.strftime('%Y-%m-%d')}")
+    p.drawString(50, 700, f"Customer: {quotation.customer_name}")
+    p.drawString(50, 680, f"Address: {quotation.customer_address}")
     
-    # Invoice items
+    # quotation items
     y_position = 640
     p.setFont("Helvetica-Bold", 10)
     p.drawString(50, y_position, "Item")
@@ -355,7 +355,7 @@ def generate_invoice_pdf(invoice_id):
     y_position -= 20
     p.setFont("Helvetica", 10)
     
-    for item in invoice_items:
+    for item in quotation_items:
         inventory = Inventory.query.get(item.inventory_id)
         if inventory:
             p.drawString(50, y_position, f"{inventory.name} - {inventory.brand}")
@@ -367,12 +367,12 @@ def generate_invoice_pdf(invoice_id):
     # Total
     y_position -= 20
     p.setFont("Helvetica-Bold", 12)
-    p.drawString(300, y_position, f"TOTAL: R{invoice.total_amount:.2f}")
+    p.drawString(300, y_position, f"TOTAL: R{quotation.total_amount:.2f}")
     
     p.save()
     buffer.seek(0)
     
-    return send_file(buffer, as_attachment=True, download_name=f'invoice_{invoice.id}.pdf', mimetype='application/pdf')
+    return send_file(buffer, as_attachment=True, download_name=f'quotation_{quotation.id}.pdf', mimetype='application/pdf')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

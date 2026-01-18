@@ -73,7 +73,7 @@
         </div>
     </div>
 
-    <!-- Invoices Card -->
+    <!-- quotations Card -->
     <div class="col-md-6 col-xl-3">
         <div class="card metric-card h-100 bg-warning text-white border-0"
             style="background-color: #f72585 !important;">
@@ -81,14 +81,14 @@
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div class="bg-white bg-opacity-25 rounded-circle p-3 d-flex align-items-center justify-content-center"
                         style="width: 50px; height: 50px;">
-                        <i class="fas fa-file-invoice fa-lg text-white"></i>
+                        <i class="fas fa-file-quotation fa-lg text-white"></i>
                     </div>
                 </div>
-                <h5 class="card-title fw-medium opacity-75 mb-1">Invoices</h5>
-                <h2 class="display-6 fw-bold mb-0">{{ invoices_count }}</h2>
+                <h5 class="card-title fw-medium opacity-75 mb-1">quotations</h5>
+                <h2 class="display-6 fw-bold mb-0">{{ quotations_count }}</h2>
             </div>
             <div class="card-footer bg-transparent border-0 px-4 pb-4 pt-0">
-                <a href="{{ url_for('invoices') }}"
+                <a href="{{ url_for('quotations') }}"
                     class="text-white text-decoration-none small opacity-75 stretched-link">View Details <i
                         class="fas fa-arrow-right ms-1"></i></a>
             </div>
@@ -139,13 +139,13 @@
                             <small class="text-muted">Update inventory stock</small>
                         </div>
                     </a>
-                    <a href="{{ url_for('add_invoice') }}"
+                    <a href="{{ url_for('add_quotation') }}"
                         class="btn btn-light text-start p-3 d-flex align-items-center shadow-sm border">
                         <div class="rounded-circle bg-warning bg-opacity-10 p-2 me-3 text-warning">
-                            <i class="fas fa-file-invoice-dollar fa-fw"></i>
+                            <i class="fas fa-file-quotation-dollar fa-fw"></i>
                         </div>
                         <div>
-                            <span class="d-block fw-bold text-dark">Create Invoice</span>
+                            <span class="d-block fw-bold text-dark">Create quotation</span>
                             <small class="text-muted">Bill a customer</small>
                         </div>
                     </a>

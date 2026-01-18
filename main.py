@@ -11,7 +11,7 @@ from reportlab.lib.units import inch
 import sqlalchemy as db
 
 # Import Excel storage and models
-from models import (Supplier, Customer, Inventory, Activity, ActivityType, Invoice, InvoiceItem,
+from models import (Supplier, Customer, Inventory, Activity, ActivityType, quotation, quotationItem,
                         StockTransaction, FinancialRecord, CustomField, FinancialCategory,
                         FuelRecord, MileageRecord, JourneyRecord, Location, Pricing,
                         StockChangeReason, FinancialType, TransactionType, PaymentType, Currency)
@@ -29,11 +29,11 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY") or "solar_company_secret_key
 
 def normalize_enums():
     """Normalize enum strings in DB to match SQLAlchemy Enum definitions"""
-    # Normalize Invoice.status to uppercase values
+    # Normalize quotation.status to uppercase values
     try:
-        invoices = db_session.query(Invoice).all()
+        quotations = db_session.query(quotation).all()
         changed = 0
-        for inv in invoices:
+        for inv in quotations:
             if isinstance(inv.status, str):
                 val = inv.status.strip()
                 upper = val.upper()
@@ -101,7 +101,7 @@ def index():
     suppliers_count = db_session.query(Supplier).count()
     customers_count = db_session.query(Customer).count()
     inventory_count = db_session.query(Inventory).count()
-    invoices_count = db_session.query(Invoice).count()
+    quotations_count = db_session.query(quotation).count()
     activities_count = db_session.query(Activity).count()
 
     # Location frequency for pie chart
@@ -119,7 +119,7 @@ def index():
                          suppliers_count=suppliers_count,
                          customers_count=customers_count,
                          inventory_count=inventory_count,
-                         invoices_count=invoices_count,
+                         quotations_count=quotations_count,
                          activities_count=activities_count,
                          top_locations=location_labels,
                          location_data=location_data)
@@ -162,11 +162,11 @@ def inventory():
 
     return render_template('inventory.html', items=items, categories=categories, search=search, selected_category=category)
 
-@app.route('/invoices')
-def invoices():
-    """List all invoices"""
-    invoices = db_session.query(Invoice).order_by(Invoice.date_created.desc()).all()
-    return render_template('invoices.html', invoices=invoices)
+@app.route('/quotations')
+def quotations():
+    """List all quotations"""
+    quotations = db_session.query(quotation).order_by(quotation.date_created.desc()).all()
+    return render_template('quotations.html', quotations=quotations)
 
 @app.route('/activities')
 def activities():
@@ -189,10 +189,10 @@ def financial():
     else:
         end_date = datetime(selected_year, selected_month + 1, 1)
 
-    # Total sales from invoices in the period
-    total_sales = db_session.query(db.func.sum(Invoice.total_amount)).filter(
-        Invoice.date_created >= start_date,
-        Invoice.date_created < end_date
+    # Total sales from quotations in the period
+    total_sales = db_session.query(db.func.sum(quotation.total_amount)).filter(
+        quotation.date_created >= start_date,
+        quotation.date_created < end_date
     ).scalar() or 0
 
     # Total expenses in the period
@@ -258,9 +258,9 @@ def financial():
         else:
             month_end = datetime(selected_year, m + 1, 1)
 
-        rev = db_session.query(db.func.sum(Invoice.total_amount)).filter(
-            Invoice.date_created >= month_start,
-            Invoice.date_created < month_end
+        rev = db_session.query(db.func.sum(quotation.total_amount)).filter(
+            quotation.date_created >= month_start,
+            quotation.date_created < month_end
         ).scalar() or 0
         monthly_revenue_data.append(rev)
 
@@ -271,14 +271,14 @@ def financial():
         ).scalar() or 0
         monthly_expenses_data.append(exp)
 
-    # Profit by item (from invoice items)
-    invoice_items = db_session.query(InvoiceItem).join(Invoice).filter(
-        Invoice.date_created >= start_date,
-        Invoice.date_created < end_date
+    # Profit by item (from quotation items)
+    quotation_items = db_session.query(quotationItem).join(quotation).filter(
+        quotation.date_created >= start_date,
+        quotation.date_created < end_date
     ).all()
 
     item_profits = {}
-    for item in invoice_items:
+    for item in quotation_items:
         if item.inventory_id:
             inventory = db_session.query(Inventory).get(item.inventory_id)
             item_name = inventory.name if inventory else "Unknown Item"
@@ -444,22 +444,22 @@ def add_inventory():
     suppliers = db_session.query(Supplier).all()
     return render_template('add_inventory.html', suppliers=suppliers)
 
-@app.route('/invoices/add', methods=['GET', 'POST'])
-def add_invoice():
-    """Create new invoice"""
+@app.route('/quotations/add', methods=['GET', 'POST'])
+def add_quotation():
+    """Create new quotation"""
     if request.method == 'POST':
-        from models import InvoiceStatus, TransactionType, Currency, PaymentType
+        from models import quotationstatus, TransactionType, Currency, PaymentType
 
         # Begin transaction
         try:
-            # Process and validate invoice items first
+            # Process and validate quotation items first
             item_ids = request.form.getlist('item_id[]')
             quantities = request.form.getlist('quantity[]')
             unit_prices = request.form.getlist('unit_price[]')
             custom_item_names = request.form.getlist('custom_item_name[]')
 
             calculated_total = 0
-            invoice_items_data = []
+            quotation_items_data = []
 
             # Validate all items and calculate total
             for i, item_id in enumerate(item_ids):
@@ -469,14 +469,14 @@ def add_invoice():
                         custom_name = custom_item_names[i] if i < len(custom_item_names) else ''
                         if not custom_name:
                             flash('Custom item name is required', 'error')
-                            return redirect(url_for('add_invoice'))
+                            return redirect(url_for('add_quotation'))
 
                         qty = int(quantities[i])
                         unit_price = float(unit_prices[i])
                         item_total = qty * unit_price
                         calculated_total += item_total
 
-                        invoice_items_data.append({
+                        quotation_items_data.append({
                             'inventory_id': None,  # No inventory item for custom
                             'custom_name': custom_name,
                             'quantity': qty,
@@ -488,18 +488,18 @@ def add_invoice():
                         inventory_item = db_session.query(Inventory).get(int(item_id))
                         if not inventory_item:
                             flash(f'Item not found', 'error')
-                            return redirect(url_for('add_invoice'))
+                            return redirect(url_for('add_quotation'))
 
                         qty = int(quantities[i])
                         if inventory_item.quantity < qty:
                             flash(f'Insufficient stock for {inventory_item.name}. Available: {inventory_item.quantity}', 'error')
-                            return redirect(url_for('add_invoice'))
+                            return redirect(url_for('add_quotation'))
 
                         unit_price = float(unit_prices[i])
                         item_total = qty * unit_price
                         calculated_total += item_total
 
-                        invoice_items_data.append({
+                        quotation_items_data.append({
                             'inventory_id': int(item_id),
                             'inventory_item': inventory_item,
                             'quantity': qty,
@@ -511,18 +511,18 @@ def add_invoice():
                         inventory_item = db_session.query(Inventory).get(int(item_id))
                         if not inventory_item:
                             flash(f'Item not found', 'error')
-                            return redirect(url_for('add_invoice'))
+                            return redirect(url_for('add_quotation'))
 
                         qty = int(quantities[i])
                         if inventory_item.quantity < qty:
                             flash(f'Insufficient stock for {inventory_item.name}. Available: {inventory_item.quantity}', 'error')
-                            return redirect(url_for('add_invoice'))
+                            return redirect(url_for('add_quotation'))
 
                         unit_price = float(unit_prices[i])
                         item_total = qty * unit_price
                         calculated_total += item_total
 
-                        invoice_items_data.append({
+                        quotation_items_data.append({
                             'inventory_id': int(item_id),
                             'inventory_item': inventory_item,
                             'quantity': qty,
@@ -535,38 +535,38 @@ def add_invoice():
             customer = db_session.query(Customer).filter_by(identification_number=customer_identification).first()
             if not customer:
                 flash(f'Customer with identification number {customer_identification} not found. Please add the customer first.', 'error')
-                return redirect(url_for('add_invoice'))
+                return redirect(url_for('add_quotation'))
 
-            # Create invoice with calculated total
-            invoice = Invoice(
+            # Create quotation with calculated total
+            quotation = quotation(
                 customer_id=customer.id,
                 total_amount=calculated_total,
                 status='PENDING'
             )
-            db_session.add(invoice)
-            db_session.flush()  # Get invoice ID without committing
+            db_session.add(quotation)
+            db_session.flush()  # Get quotation ID without committing
 
-            # Create invoice items and update stock
-            for item_data in invoice_items_data:
+            # Create quotation items and update stock
+            for item_data in quotation_items_data:
                 if item_data['inventory_id'] is None:
                     # Custom item - no inventory update needed
-                    invoice_item = InvoiceItem(
-                        invoice_id=invoice.id,
+                    quotation_item = quotationItem(
+                        quotation_id=quotation.id,
                         inventory_id=None,
                         quantity=item_data['quantity'],
                         unit_price=item_data['unit_price'],
                         description=item_data['custom_name']
                     )
-                    db_session.add(invoice_item)
+                    db_session.add(quotation_item)
                 else:
                     # Regular inventory item
-                    invoice_item = InvoiceItem(
-                        invoice_id=invoice.id,
+                    quotation_item = quotationItem(
+                        quotation_id=quotation.id,
                         inventory_id=item_data['inventory_id'],
                         quantity=item_data['quantity'],
                         unit_price=item_data['unit_price']
                     )
-                    db_session.add(invoice_item)
+                    db_session.add(quotation_item)
 
                     # Update inventory quantity
                     item_data['inventory_item'].quantity -= item_data['quantity']
@@ -578,25 +578,25 @@ def add_invoice():
                         quantity=-item_data['quantity'],
                         unit_price=item_data['unit_price'],
                         total_value=-item_data['item_total'],
-                        reference_id=invoice.id,
-                        reference_type='INVOICE',
-                        notes=f'Sold via invoice #{invoice.id}'
+                        reference_id=quotation.id,
+                        reference_type='quotation',
+                        notes=f'Sold via quotation #{quotation.id}'
                     )
                     db_session.add(stock_transaction)
 
             # Commit all changes
             db_session.commit()
-            flash('Invoice created successfully!', 'success')
-            return redirect(url_for('invoices'))
+            flash('quotation created successfully!', 'success')
+            return redirect(url_for('quotations'))
 
         except Exception as e:
             db_session.rollback()
-            flash(f'Error creating invoice: {str(e)}', 'error')
-            return redirect(url_for('add_invoice'))
+            flash(f'Error creating quotation: {str(e)}', 'error')
+            return redirect(url_for('add_quotation'))
 
     customers = db_session.query(Customer).all()
     inventory_items = db_session.query(Inventory).filter(Inventory.quantity > 0).all()
-    return render_template('add_invoice.html', customers=customers, inventory_items=inventory_items)
+    return render_template('add_quotation.html', customers=customers, inventory_items=inventory_items)
 
 @app.route('/activities/add', methods=['GET', 'POST'])
 def add_activity():
@@ -716,9 +716,9 @@ def generate_income_statement(month, year):
         end_date = datetime(year, month + 1, 1)
 
     # Get financial data
-    total_sales = db_session.query(db.func.sum(Invoice.total_amount)).filter(
-        Invoice.date_created >= start_date,
-        Invoice.date_created < end_date
+    total_sales = db_session.query(db.func.sum(quotation.total_amount)).filter(
+        quotation.date_created >= start_date,
+        quotation.date_created < end_date
     ).scalar() or 0
 
     total_expenses = db_session.query(db.func.sum(FinancialRecord.amount)).filter(
@@ -1170,21 +1170,21 @@ def delete_inventory(inventory_id):
         flash('Inventory item not found!', 'error')
     return redirect(url_for('inventory'))
 
-@app.route('/invoices/delete/<int:invoice_id>', methods=['POST'])
-def delete_invoice(invoice_id):
-    """Delete invoice"""
-    invoice = db_session.query(Invoice).get(invoice_id)
-    if invoice:
+@app.route('/quotations/delete/<int:quotation_id>', methods=['POST'])
+def delete_quotation(quotation_id):
+    """Delete quotation"""
+    quotation = db_session.query(quotation).get(quotation_id)
+    if quotation:
         # Restore inventory quantities
-        for item in invoice.items:
+        for item in quotation.items:
             if item.inventory:
                 item.inventory.quantity += item.quantity
-        db_session.delete(invoice)
+        db_session.delete(quotation)
         db_session.commit()
-        flash('Invoice deleted successfully!', 'success')
+        flash('quotation deleted successfully!', 'success')
     else:
-        flash('Invoice not found!', 'error')
-    return redirect(url_for('invoices'))
+        flash('quotation not found!', 'error')
+    return redirect(url_for('quotations'))
 
 @app.route('/activities/delete/<int:activity_id>', methods=['POST'])
 def delete_activity(activity_id):
@@ -1222,29 +1222,29 @@ def delete_financial_category(category_id):
         flash('Financial category not found!', 'error')
     return redirect(url_for('financial_categories'))
 
-@app.route('/invoice/<int:invoice_id>')
-def view_invoice(invoice_id):
-    """View an invoice as an HTML page"""
-    invoice = db_session.query(Invoice).get(invoice_id)
-    if not invoice:
+@app.route('/quotation/<int:quotation_id>')
+def view_quotation(quotation_id):
+    """View an quotation as an HTML page"""
+    quotation = db_session.query(quotation).get(quotation_id)
+    if not quotation:
         from flask import abort
         abort(404)
-    invoice_items = db_session.query(InvoiceItem).filter_by(invoice_id=invoice_id).all()
+    quotation_items = db_session.query(quotationItem).filter_by(quotation_id=quotation_id).all()
     
     total_quantity = 0
-    for item in invoice_items:
+    for item in quotation_items:
         total_quantity += item.quantity
 
-    return render_template('view_invoice.html', invoice=invoice, invoice_items=invoice_items, total_quantity=total_quantity)
+    return render_template('view_quotation.html', quotation=quotation, quotation_items=quotation_items, total_quantity=total_quantity)
 
-@app.route('/invoice/<int:invoice_id>/pdf')
-def generate_invoice_pdf(invoice_id):
-    """Generate PDF invoice"""
-    invoice = db_session.query(Invoice).get(invoice_id)
-    if not invoice:
+@app.route('/quotation/<int:quotation_id>/pdf')
+def generate_quotation_pdf(quotation_id):
+    """Generate PDF quotation"""
+    quotation = db_session.query(quotation).get(quotation_id)
+    if not quotation:
         from flask import abort
         abort(404)
-    invoice_items = db_session.query(InvoiceItem).filter_by(invoice_id=invoice_id).all()
+    quotation_items = db_session.query(quotationItem).filter_by(quotation_id=quotation_id).all()
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch, leftMargin=0.5*inch, rightMargin=0.5*inch)
@@ -1318,7 +1318,7 @@ def generate_invoice_pdf(invoice_id):
         spaceAfter=8
     )
     story.append(Paragraph('Quotation', quotation_style))
-    story.append(Paragraph(f'SAL-QTN-2025-{invoice.id:05d}', styles['Normal']))
+    story.append(Paragraph(f'SAL-QTN-2025-{quotation.id:05d}', styles['Normal']))
     story.append(Spacer(1, 0.2*inch))
 
     # Customer Name and Date aligned
@@ -1329,14 +1329,14 @@ def generate_invoice_pdf(invoice_id):
         alignment=0,  # Left alignment
         spaceAfter=10
     )
-    story.append(Paragraph(f"<b>Customer:</b> {invoice.customer.name}", customer_date_style))
-    story.append(Paragraph(f"<b>Date:</b> {invoice.date_created.strftime('%d-%m-%Y')}", customer_date_style))
+    story.append(Paragraph(f"<b>Customer:</b> {quotation.customer.name}", customer_date_style))
+    story.append(Paragraph(f"<b>Date:</b> {quotation.date_created.strftime('%d-%m-%Y')}", customer_date_style))
     story.append(Spacer(1, 0.2*inch))
 
     # Items Table
     items_data = [['Sr', 'Item Code', 'Description', 'Quantity', 'Price', 'Total Amount']]
     total_quantity = 0
-    for i, item in enumerate(invoice_items):
+    for i, item in enumerate(quotation_items):
         if item.inventory_id:
             inventory = db_session.query(Inventory).get(item.inventory_id)
             item_name = inventory.name if inventory else "Unknown Item"
@@ -1376,7 +1376,7 @@ def generate_invoice_pdf(invoice_id):
     story.append(Spacer(1, 0.2*inch))
     # Total
     total_data = [
-        ['', '', '', '', '', f"Net Price ${invoice.total_amount:,.2f}"]
+        ['', '', '', '', '', f"Net Price ${quotation.total_amount:,.2f}"]
     ]
     total_table = Table(total_data, colWidths=[0.4*inch, 1*inch, 3.1*inch, 0.7*inch, 1*inch, 1.3*inch])
     total_table.setStyle(TableStyle([
@@ -1405,7 +1405,7 @@ def generate_invoice_pdf(invoice_id):
     doc.build(story)
     buffer.seek(0)
 
-    return send_file(buffer, as_attachment=True, download_name=f'invoice_{invoice.id}.pdf', mimetype='application/pdf')
+    return send_file(buffer, as_attachment=True, download_name=f'quotation_{quotation.id}.pdf', mimetype='application/pdf')
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5002)

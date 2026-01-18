@@ -8,7 +8,7 @@ This is a comprehensive ERP system for Giebee Engineering built with Flask and S
 - **Supplier Management**: Add and manage suppliers
 - **Customer Management**: Add and manage customers
 - **Inventory Management**: Track stock levels, add/remove inventory
-- **Invoice Management**: Create and manage invoices
+- **quotation Management**: Create and manage quotations
 - **Activity Management**: Track company activities
 - **Financial Dashboard**: Revenue, expenses, and profit tracking
 - **Fuel Tracking**: Monitor fuel consumption and costs

@@ -21,7 +21,7 @@ Preferred communication style: Simple, everyday language.
 ### Backend Architecture
 - **Web Framework**: Flask (Python) following MVC pattern with route-based controllers
 - **Session Management**: Flask's built-in session handling with configurable secret keys
-- **PDF Generation**: ReportLab integration for invoice and report generation
+- **PDF Generation**: ReportLab integration for quotation and report generation
 - **File Handling**: In-memory file generation for downloads (PDFs, Excel files)
 - **Configuration**: Environment-based configuration for database URLs and secret keys
 
@@ -37,7 +37,7 @@ Preferred communication style: Simple, everyday language.
 - **Customer Management**: Client database with identification, contact, and address information
 - **Inventory Control**: Stock management with categories, specifications, pricing, and quantity tracking
 - **Activity Tracking**: Service job management with status workflows and technician assignment
-- **Invoice System**: Billing with line items, multiple currencies, and PDF generation
+- **quotation System**: Billing with line items, multiple currencies, and PDF generation
 - **Financial Records**: Income and expense tracking with categorization and reporting
 - **Stock Transactions**: Inventory movement logging with reasons and audit trails
 
@@ -59,12 +59,12 @@ Preferred communication style: Simple, everyday language.
 ### Core Framework Dependencies
 - **Flask**: Web application framework for routing and request handling
 - **SQLAlchemy/Flask-SQLAlchemy**: Database ORM and Flask integration
-- **ReportLab**: PDF generation library for invoices and reports
+- **ReportLab**: PDF generation library for quotations and reports
 
 ### Frontend Dependencies
 - **Bootstrap 5.1.3**: CSS framework for responsive UI components
 - **Font Awesome 6.0.0**: Icon library for consistent visual elements
-- **jQuery**: JavaScript library for dynamic form interactions (invoice line items)
+- **jQuery**: JavaScript library for dynamic form interactions (quotation line items)
 
 ### Database Integration
 - **SQLite**: Default development database (file-based)

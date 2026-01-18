@@ -40,7 +40,7 @@ class ActivityStatusEnum(enum.Enum):
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
 
-class InvoiceStatus(enum.Enum):
+class quotationstatus(enum.Enum):
     PENDING = "PENDING"
     PAID = "PAID"
     OVERDUE = "OVERDUE"
@@ -149,8 +149,8 @@ class Activity(Base):
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class Invoice(Base):
-    __tablename__ = 'invoices'
+class quotation(Base):
+    __tablename__ = 'quotations'
     id = Column(Integer, primary_key=True)
     customer_id = Column(Integer, ForeignKey('customers.id'))
     customer = relationship('Customer')
@@ -163,11 +163,11 @@ class Invoice(Base):
     notes = Column(String(500))
     date_created = Column(DateTime, default=datetime.utcnow)
 
-class InvoiceItem(Base):
-    __tablename__ = 'invoice_items'
+class quotationItem(Base):
+    __tablename__ = 'quotation_items'
     id = Column(Integer, primary_key=True)
-    invoice_id = Column(Integer, ForeignKey('invoices.id'))
-    invoice = relationship('Invoice', backref='items')
+    quotation_id = Column(Integer, ForeignKey('quotations.id'))
+    quotation = relationship('quotation', backref='items')
     inventory_id = Column(Integer, ForeignKey('inventory.id'))
     inventory = relationship('Inventory')
     quantity = Column(Integer, nullable=False)

@@ -1843,10 +1843,10 @@ def add_payment(invoice_id):
                 category="Sales",
                 description=f"Payment for Invoice #{invoice.id}",
                 amount=amount,
+
                 date=datetime.now(),
-                payment_method=payment_method,
                 reference_id=invoice.id,
-                notes=f"Ref: {reference}" if reference else ""
+                notes=f"Method: {payment_method} | Ref: {reference}" if reference else f"Method: {payment_method}"
             )
             db_session.add(fin_record)
 

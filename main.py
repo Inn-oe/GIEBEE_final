@@ -2002,5 +2002,29 @@ def generate_payment_pdf(payment_id):
 
     return send_file(buffer, as_attachment=True, download_name=filename, mimetype='application/pdf')
 
+
+# Auto-migration helper
+def check_db_schema():
+    """Checks for missing columns and adds them if necessary (Simple Migration)"""
+    from sqlalchemy import text
+    try:
+        # Check for payer_name in payments
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("ALTER TABLE payments ADD COLUMN payer_name VARCHAR(100)"))
+                conn.commit()
+                print("Added column 'payer_name' to 'payments'")
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"Schema check warning: {e}")
+
+@app.before_request
+def startup_check():
+    if not hasattr(app, 'schema_checked'):
+        init_db()
+        check_db_schema()
+        app.schema_checked = True
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5002)

@@ -3,6 +3,10 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+load_dotenv()
 
 # Use DATABASE_URL from environment, default to SQLite for local development
 database_url = os.environ.get('DATABASE_URL')

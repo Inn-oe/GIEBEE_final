@@ -204,10 +204,10 @@ def financial():
     else:
         end_date = datetime(selected_year, selected_month + 1, 1)
 
-    # Total sales from quotations in the period
-    total_sales = db_session.query(db.func.sum(quotation.total_amount)).filter(
-        quotation.date_created >= start_date,
-        quotation.date_created < end_date
+    # Total sales from actual payments in the period
+    total_sales = db_session.query(db.func.sum(Payment.amount)).filter(
+        Payment.payment_date >= start_date,
+        Payment.payment_date < end_date
     ).scalar() or 0
 
     # Total expenses in the period
@@ -273,9 +273,9 @@ def financial():
         else:
             month_end = datetime(selected_year, m + 1, 1)
 
-        rev = db_session.query(db.func.sum(quotation.total_amount)).filter(
-            quotation.date_created >= month_start,
-            quotation.date_created < month_end
+        rev = db_session.query(db.func.sum(Payment.amount)).filter(
+            Payment.payment_date >= month_start,
+            Payment.payment_date < month_end
         ).scalar() or 0
         monthly_revenue_data.append(rev)
 

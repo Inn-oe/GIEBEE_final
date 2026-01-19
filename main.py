@@ -224,14 +224,6 @@ def financial():
         FinancialRecord.date < end_date
     ).scalar() or 0
 
-    profit = (total_sales + total_income) - (total_expenses + abs(cogs))
-
-    # Recent transactions
-    recent_transactions = db_session.query(FinancialRecord).filter(
-        FinancialRecord.date >= start_date,
-        FinancialRecord.date < end_date
-    ).order_by(FinancialRecord.date.desc()).limit(10).all()
-
     # Additional financial metrics
     cogs = db_session.query(db.func.sum(StockTransaction.total_value)).filter(
         StockTransaction.transaction_type == 'STOCK_OUT',
@@ -249,6 +241,14 @@ def financial():
         FuelRecord.date >= start_date,
         FuelRecord.date < end_date
     ).scalar() or 0
+
+    profit = (total_sales + total_income) - (total_expenses + abs(cogs))
+
+    # Recent transactions
+    recent_transactions = db_session.query(FinancialRecord).filter(
+        FinancialRecord.date >= start_date,
+        FinancialRecord.date < end_date
+    ).order_by(FinancialRecord.date.desc()).limit(10).all()
 
     # Inventory turnover (COGS / Average Inventory)
     avg_inventory_value = db_session.query(db.func.avg(Inventory.unit_price * Inventory.quantity)).scalar() or 1
